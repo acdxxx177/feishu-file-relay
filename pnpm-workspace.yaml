@@ -1,0 +1,14 @@
+# 仅允许打包工具和本地 Workers 运行时安装所需的脚本。
+allowBuilds:
+  esbuild: true
+  workerd: true
+# pnpm 安装时记录的新发布版本例外，限定到本次锁定的具体版本。
+minimumReleaseAgeExclude:
+  - '@cloudflare/workerd-darwin-64@1.20261102.1'
+  - '@cloudflare/workerd-darwin-arm64@1.20261102.1'
+  - '@cloudflare/workerd-linux-64@1.20261102.1'
+  - '@cloudflare/workerd-linux-arm64@1.20261102.1'
+  - '@cloudflare/workerd-windows-64@1.20261102.1'
+  - miniflare@5.20261102.0-beta
+  - workerd@1.20261102.1
+  - wrangler@4.156.2
