@@ -2,5 +2,114 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "feishu-file-relay",
   "main": "src/index.ts",
-  "compatibility_date": "2026-11-02"
+  "compatibility_date": "2026-11-02",
+  "compatibility_flags": [
+    "enable_ctx_exports",
+    "enable_request_signal"
+  ],
+  "workers_dev": false,
+  "preview_urls": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "feishu-file-relay",
+      "database_id": "796792c4-75d6-4934-8bbc-3ea04e4263d0",
+      "migrations_dir": "migrations",
+      "remote": false
+    }
+  ],
+  "vars": {
+    "FEISHU_INTAKE_POLICY": "platform",
+    "FEISHU_TRANSPORT": "real",
+    "PUBLIC_BASE_URL": "https://dl.sinoballvalve.com",
+    "FEISHU_API_BASE": "https://open.feishu.cn",
+    "FEISHU_ACCOUNTS_BASE": "https://accounts.feishu.cn",
+    "MAX_FILE_SIZE": "1073741824",
+    "WEBHOOK_MAX_SKEW_SECONDS": "300",
+    "CHUNK_CACHE_TTL_SECONDS": "604800",
+    "UPSTREAM_READ_TIMEOUT_MS": "30000"
+  },
+  "ratelimits": [
+    {
+      "name": "DOWNLOAD_LIMITER",
+      "namespace_id": "1001",
+      "simple": {
+        "limit": 60,
+        "period": 60
+      }
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "*/5 * * * *"
+    ]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1,
+    "logs": {
+      "invocation_logs": false
+    },
+    "traces": {
+      "enabled": true,
+      "head_sampling_rate": 0.01
+    }
+  },
+  "env": {
+    "online-test": {
+      "name": "feishu-file-relay-online-test",
+      "workers_dev": true,
+      "preview_urls": false,
+      "routes": [],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "feishu-file-relay-online-test",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "migrations",
+          "remote": false
+        }
+      ],
+      "services": [
+        {
+          "binding": "FEISHU_MOCK",
+          "service": "feishu-file-relay-mock-online-test"
+        }
+      ],
+      "vars": {
+        "FEISHU_INTAKE_POLICY": "allowlist",
+        "FEISHU_TRANSPORT": "mock",
+        "PUBLIC_BASE_URL": "https://online-test.invalid",
+        "FEISHU_API_BASE": "https://mock-feishu.invalid",
+        "FEISHU_ACCOUNTS_BASE": "https://mock-accounts.invalid",
+        "MAX_FILE_SIZE": "104857600",
+        "WEBHOOK_MAX_SKEW_SECONDS": "300",
+        "CHUNK_CACHE_TTL_SECONDS": "604800",
+        "UPSTREAM_READ_TIMEOUT_MS": "30000"
+      },
+      "ratelimits": [
+        {
+          "name": "DOWNLOAD_LIMITER",
+          "namespace_id": "1002",
+          "simple": {
+            "limit": 60,
+            "period": 60
+          }
+        }
+      ],
+      "triggers": {
+        "crons": [
+          "*/5 * * * *"
+        ]
+      }
+    }
+  },
+  "account_id": "99bb38b174e12e1527cfb17974a21c30",
+  "routes": [
+    {
+      "pattern": "dl.sinoballvalve.com",
+      "custom_domain": true,
+      "zone_id": "04731bc1e8f10f2ef107dfc17ab84d3b"
+    }
+  ]
 }

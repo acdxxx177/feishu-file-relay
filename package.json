@@ -10,15 +10,31 @@
   "scripts": {
     "dev": "wrangler dev --local --ip 127.0.0.1",
     "cf-typegen": "wrangler types",
-    "typecheck": "pnpm run cf-typegen && tsc --noEmit",
+    "typecheck": "pnpm run cf-typegen && tsc --noEmit && tsc -p tsconfig.tests.json",
     "build": "wrangler deploy --dry-run --outdir dist",
-    "deploy": "pnpm run typecheck && wrangler deploy"
+    "test": "pnpm run build && pnpm run build:mock && node --test --test-concurrency=1 tests/*.test.ts",
+    "test:large": "pnpm run build && node --test --test-concurrency=1 tests/large/*.test.ts",
+    "test:stress": "pnpm run build && node --test --test-concurrency=1 tests/stress/*.test.ts",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "mock:feishu": "node mocks/feishu-mock.ts",
+    "smoke": "node scripts/smoke.ts",
+    "online:prepare": "node scripts/online-setup.ts prepare",
+    "online:deploy": "node scripts/online-setup.ts deploy",
+    "online:test": "node scripts/online-test.ts",
+    "online:tail": "node scripts/online-tail.ts",
+    "production:prepare": "node scripts/production-setup.ts prepare",
+    "production:deploy": "node scripts/production-setup.ts deploy",
+    "production:verify": "node scripts/production-setup.ts verify",
+    "build:mock": "wrangler deploy --config wrangler.mock.jsonc --dry-run --outdir dist/mock",
+    "deploy": "pnpm run typecheck && pnpm run production:deploy"
   },
   "dependencies": {
     "hono": "4.13.16"
   },
   "devDependencies": {
     "@hono/cli": "0.1.11",
+    "@types/node": "^24.19.2",
+    "miniflare": "5.20261102.0-beta",
     "typescript": "7.0.2",
     "wrangler": "4.156.2"
   }

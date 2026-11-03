@@ -1,2 +1,20 @@
-# 当前健康检查无需环境变量或密钥。
-# 如需本地变量，请复制为 .dev.vars；不要提交真实密钥。
+# 复制为 .dev.vars 后只在本地编辑，已有文件请手动合并，勿覆盖。
+# 自动测试不读取本地凭据。Wrangler 优先使用 .dev.vars，再使用 .env。
+FEISHU_APP_ID=replace-with-app-id
+FEISHU_APP_SECRET=replace-with-app-secret
+FEISHU_VERIFICATION_TOKEN=replace-with-verification-token
+# 建议在飞书启用加密推送，填写完全相同的Encrypt Key；不启用时留空。
+FEISHU_ENCRYPT_KEY=replace-with-encrypt-key
+# 生产信任飞书应用可用范围，仅接受用户单聊；无需用户/会话名单或管理员ID。
+FEISHU_INTAKE_POLICY=platform
+FEISHU_TRANSPORT=real
+# 旧版/模拟配置可选allowlist；该模式空名单拒绝上传，管理员也必须在名单中。
+# ALLOWED_OPEN_IDS=ou_replace-with-uploader
+# ADMIN_OPEN_IDS=ou_replace-with-admin
+PUBLIC_BASE_URL=https://dl.example.com
+FEISHU_API_BASE=https://open.feishu.cn
+FEISHU_ACCOUNTS_BASE=https://accounts.feishu.cn
+MAX_FILE_SIZE=1073741824
+WEBHOOK_MAX_SKEW_SECONDS=300
+CHUNK_CACHE_TTL_SECONDS=604800
+UPSTREAM_READ_TIMEOUT_MS=30000
