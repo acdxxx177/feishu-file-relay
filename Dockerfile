@@ -23,9 +23,11 @@ RUN pnpm install --prod --frozen-lockfile --ignore-scripts
 
 FROM base AS runtime
 ENV NODE_ENV=production
+LABEL org.opencontainers.image.licenses="MIT"
 COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist/vps ./dist/vps
 COPY --chown=node:node package.json ./package.json
+COPY --chown=node:node LICENSE ./LICENSE
 USER node
 STOPSIGNAL SIGTERM
 CMD ["node", "dist/vps/main.js"]

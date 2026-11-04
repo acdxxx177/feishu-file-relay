@@ -3,6 +3,7 @@
 !Dockerfile
 !.dockerignore
 !package.json
+!LICENSE
 !pnpm-lock.yaml
 !pnpm-workspace.yaml
 !prisma.config.ts

@@ -1,5 +1,9 @@
 # Project status
 
+## Project license (2026-11-04)
+
+The owner selected the MIT license with the copyright notice `Copyright (c) 2026 acdxxx177`. The root LICENSE contains the standard MIT text; package metadata and README identify MIT, and the runtime Docker image includes LICENSE and its OCI license label. Third-party dependencies retain their own licenses. This change adds local licensing files and metadata only; it does not publish the repository or an image.
+
 ## Docker packaging and GHCR workflow (2026-11-04)
 
 Implemented local delivery: a multi-stage Node 24 Debian slim image for Linux AMD64, production dependencies, non-root runtime, allowlisted Docker build context, and a single-service Compose deployment with read-only root filesystem, host-loopback port publication and dedicated bridge networking. All application configuration is injected through environment variables. `pnpm env:docker` writes a blank/default `.env.docker` template without reading existing configuration or process credentials and atomically refuses overwrites; the local ignored template was generated successfully.

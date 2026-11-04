@@ -1,6 +1,7 @@
 {
   "name": "feishu-file-relay",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.24.0",
