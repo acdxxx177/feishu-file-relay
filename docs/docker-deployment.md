@@ -107,4 +107,6 @@ pnpm test:docker
 
 `test:docker` 使用虚构凭据，检查 Compose 插值、镜像非 root 启动、静态资源、SIGTERM 退出和桥接网关的客户限流隔离。运行容器采用 `--network none` 或专属 internal 网络，避免启动扫描接触真实 D1/飞书。测试只删除本次随机命名的容器和网络。可用 `DOCKER_TEST_IMAGE` 指定已构建的测试镜像。
 
+环境变量验收在实际 Compose 容器内比较值，因为 `compose config` 为再次加载而输出的文档可能将 `$` 转义成 `$$`。测试专用覆盖文件使用 Compose 的 `!reset` 清除端口/网络并设为 `network_mode: none`，需要支持该标签的 Compose 版本。桥接测试面向本机 Linux Docker 引擎，宿主机经网关直接访问 internal 网络中的容器 IP，不依赖 internal 网络发布端口；Docker Desktop/远程引擎不能替代这项 Linux 网络验证。
+
 没有 Docker CLI/daemon 时本地 Docker 检查明确跳过；CI 设置 `REQUIRE_DOCKER=1`，此时缺少 Docker 会失败。容器测试不等于真实 D1、飞书、目标代理或生产容量验收；已执行结果记在 [验证日志](verification-log.md)。

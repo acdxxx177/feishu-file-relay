@@ -1,5 +1,15 @@
 # 验证日志
 
+## 首次 GitHub 容器验收失败修复（2026-11-04）
+
+检查了 [run 41847085376 / verify](https://github.com/acdxxx177/feishu-file-relay/actions/runs/41847085376/job/126633311711) 的实际日志，对应提交 `311137b4b5680b445848e4dd93198f608a4ad362`。
+
+- **CI 已通过**：依赖安装、类型检查、应用测试、健康检查、大文件完整性和 Linux AMD64 镜像构建；Docker 三项中，非 root/断网启动、静态资源和 SIGTERM 退出这一项通过。
+- **CI 已失败**：环境测试把 `config --format json` 导出的 `fake$$secret# value` 与运行值 `fake$secret# value` 比较；桥接测试在 internal 网络上要求发布端口，`docker port` 报 `no public port '3000/tcp' published`。共 1 项通过、2 项失败。Node.js 20 弃用提示是警告，不是失败原因。
+- **已修改**：保留 Compose 原始环境映射，通过测试专用 `network_mode: none` 覆盖文件运行 Node 断言，检查真实容器环境；桥接测试保持 internal 网络，改为 Linux 宿主机直接访问容器 IP，验证网关信任、客户限流隔离和 readiness 拒绝。生产 Compose、应用逻辑和发布规则未变。
+- **本地通过**：`pnpm typecheck`、代理回归 4/4；下载到忽略目录并校验 SHA-256 的官方 Compose v5.7.0 独立程序，复现美元符号序列化行为，并验证进程端口覆盖、网关回退与断网覆盖文件合并。未安装 Docker 服务或修改系统网络。
+- **待验证**：`pnpm test:docker` 仍因本机缺少引擎跳过三项；修复后的真实容器用例需在新提交 CI 中复验。本次没有推送提交、重跑工作流或发布镜像，直接重跑旧提交仍会执行旧测试。
+
 ## Docker 与 GHCR 配置验证（2026-11-04）
 
 本次只交付本地文件；没有 Git remote，没有推送代码/版本标签、发布 GHCR 镜像、生产切换、真实飞书登记或远程 D1 操作。
