@@ -1,5 +1,11 @@
 # Project status
 
+## First GHCR image publication (2026-11-04)
+
+The user explicitly authorized creating a tag and publishing the image. Annotated tag `v1.0.0` was pushed at the CI-verified commit `2c3d2c98d7bf72820fdce5980f68c6c19c46a97f`; the later documentation-only commit contains a skip-CI marker and was deliberately not used as the release target. Release workflow [41861522449](https://github.com/acdxxx177/feishu-file-relay/actions/runs/41861522449) passed verification. Publish job `126685098328` reports success for every listed step, including the push, digest recording and cleanup, while GitHub's aggregate run/job status was still in_progress at the last check; no final aggregate success is claimed yet.
+
+Direct anonymous GHCR manifest reads verified that `ghcr.io/acdxxx177/feishu-file-relay:1.0.0`, `:latest` and `:sha-2c3d2c98d7bf72820fdce5980f68c6c19c46a97f` all resolve to OCI index digest `sha256:0569469bde620ab6df448e6321de5f67eb3059a55b2a8279520b4a074c99af61`. The index includes the Linux AMD64 image and an attestation manifest. The publication is available for anonymous pull; no package visibility setting was changed. These are registry-manifest checks, not a local Docker pull/runtime test. No VPS deployment, production D1 operation or Feishu registration occurred.
+
 ## Container CI correction verified (2026-11-04)
 
 The user authorized committing and pushing the repair. Commit `2c3d2c98d7bf72820fdce5980f68c6c19c46a97f` was pushed to main. GitHub Actions run [41858863201](https://github.com/acdxxx177/feishu-file-relay/actions/runs/41858863201), verify job `126674824415`, completed successfully: dependency installation, typecheck, application tests, Hono health, large integrity tests, Linux AMD64 image build and `pnpm test:docker` all passed. This supplies actual CI evidence for the corrected Compose environment probe and isolated bridge test, superseding the pending-CI status below. The publish job was skipped as designed for a main push; no GHCR publication or production deployment occurred. Real remote D1, Feishu and target-VPS acceptance remain separate gates.

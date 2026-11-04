@@ -1,5 +1,15 @@
 # 验证日志
 
+## 首个 GHCR 镜像发布（2026-11-04）
+
+用户授权创建 tag 并发布镜像后，将附注标签 `v1.0.0` 推送到已通过 CI 的提交 `2c3d2c98d7bf72820fdce5980f68c6c19c46a97f`。未使用随后带 `[skip ci]` 的纯文档提交作为发布目标。
+
+- [发布工作流 41861522449](https://github.com/acdxxx177/feishu-file-relay/actions/runs/41861522449) 的 verify 已成功；publish job `126685098328` 所有列出的步骤（含上传、摘要记录和清理）均成功。最后检查时 GitHub 的 run/job 汇总仍为 `in_progress`，尚未记录汇总成功。
+- GHCR 匿名请求已验证 `ghcr.io/acdxxx177/feishu-file-relay` 的 `1.0.0`、`latest` 和 `sha-2c3d2c98d7bf72820fdce5980f68c6c19c46a97f` 三个标签均指向同一摘要：`sha256:0569469bde620ab6df448e6321de5f67eb3059a55b2a8279520b4a074c99af61`。
+- OCI 索引含 `linux/amd64` 镜像和证明清单。已验证无需登录即可读取清单；本机没有 Docker 引擎，没有把清单检查当作实际拉取/启动验收。没有修改 Package 可见性、部署 VPS 或操作生产 D1。
+
+版本拉取命令：`docker pull ghcr.io/acdxxx177/feishu-file-relay:1.0.0`。固定内容可使用 `ghcr.io/acdxxx177/feishu-file-relay@sha256:0569469bde620ab6df448e6321de5f67eb3059a55b2a8279520b4a074c99af61`。
+
 ## Docker 修复推送与 CI 通过（2026-11-04）
 
 用户授权后，将修复提交 `2c3d2c98d7bf72820fdce5980f68c6c19c46a97f`（`fix(ci): 修复容器环境与桥接网络验收测试`）推送到 main。
