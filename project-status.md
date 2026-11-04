@@ -1,5 +1,9 @@
 # Project status
 
+## Container CI correction verified (2026-11-04)
+
+The user authorized committing and pushing the repair. Commit `2c3d2c98d7bf72820fdce5980f68c6c19c46a97f` was pushed to main. GitHub Actions run [41858863201](https://github.com/acdxxx177/feishu-file-relay/actions/runs/41858863201), verify job `126674824415`, completed successfully: dependency installation, typecheck, application tests, Hono health, large integrity tests, Linux AMD64 image build and `pnpm test:docker` all passed. This supplies actual CI evidence for the corrected Compose environment probe and isolated bridge test, superseding the pending-CI status below. The publish job was skipped as designed for a main push; no GHCR publication or production deployment occurred. Real remote D1, Feishu and target-VPS acceptance remain separate gates.
+
 ## First container CI failure and test correction (2026-11-04)
 
 GitHub run 41847085376 / verify job 126633311711 at commit 311137b4b5680b445848e4dd93198f608a4ad362 passed dependency installation, typecheck, small/large tests, Hono health and the Linux AMD64 image build. Its Docker suite passed the non-root/offline startup, bundled assets and SIGTERM case but failed two test assumptions: Compose config serializes literal dollar signs as doubled dollars, and an internal-only bridge did not publish the requested host port. The Node 20 action-runtime notice was a warning, not the failing step. The origin remote is now configured for acdxxx177/feishu-file-relay; earlier no-remote notes remain historical.

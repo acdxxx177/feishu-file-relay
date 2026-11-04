@@ -1,5 +1,13 @@
 # 验证日志
 
+## Docker 修复推送与 CI 通过（2026-11-04）
+
+用户授权后，将修复提交 `2c3d2c98d7bf72820fdce5980f68c6c19c46a97f`（`fix(ci): 修复容器环境与桥接网络验收测试`）推送到 main。
+
+[GitHub Actions run 41858863201](https://github.com/acdxxx177/feishu-file-relay/actions/runs/41858863201) 已完成，结论为 **success**。verify job `126674824415` 的依赖安装、类型检查、应用测试、Hono 健康检查、大文件完整性、Linux AMD64 镜像构建和 `pnpm test:docker` 全部通过。此前两处 Docker 测试修复已获得真实 Linux CI 验证，下文“待新 CI 复验”为历史状态。
+
+publish job 按 main 推送规则 **skipped**，没有发布 GHCR 镜像或部署生产。此结果不替代真实 D1、飞书和目标 VPS 验收。
+
 ## 首次 GitHub 容器验收失败修复（2026-11-04）
 
 检查了 [run 41847085376 / verify](https://github.com/acdxxx177/feishu-file-relay/actions/runs/41847085376/job/126633311711) 的实际日志，对应提交 `311137b4b5680b445848e4dd93198f608a4ad362`。
