@@ -13,7 +13,7 @@ for (const mib of [100, 500, 1024]) {
     for (let offset = 0; offset < size; offset += 65536) expectedHash.update(bytesAt(offset, Math.min(65536, size - offset)))
     const expected = expectedHash.digest('hex')
     const file = await register(h, `large-${mib}`, size)
-    const path = `/f/${file.id}`
+    const path = `/f/${file.id}/download`
     const full = await h.request(path)
     assert.equal(full.status, 200)
     assert.equal(full.headers.get('content-length'), String(size))

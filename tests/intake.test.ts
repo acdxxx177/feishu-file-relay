@@ -57,8 +57,8 @@ test('相同event_id不能登记另一消息或执行另一条撤回', async (t)
   assert.equal(h.mock.ranges.filter((range) => range.key === 'event-collision').length, 0)
   const other = await register(h, 'event-recall-target')
   await h.post(recall('event-recall-target', 'evt-event-identity'))
-  assert.equal((await h.request(`/f/${other.id}`, { method: 'HEAD' })).status, 200)
-  assert.equal((await h.request(`/f/${file.id}`, { method: 'HEAD' })).status, 200)
+  assert.equal((await h.request(`/f/${other.id}/download`, { method: 'HEAD' })).status, 200)
+  assert.equal((await h.request(`/f/${file.id}/download`, { method: 'HEAD' })).status, 200)
   assert.equal(await h.db.prepare('SELECT message_id FROM recalled_messages WHERE message_id=?').bind('event-recall-target').first(), null)
 })
 
@@ -73,7 +73,7 @@ test('登记拒绝错误Range、截断和超长探测，超限与404明确失败
     const file = await eventually(async () => { await setTimeout(40); return fileState(h, messageId) }, (value) => value?.attempts === 1 && value.lease_until === 0)
     assert.equal(file!.status, 'pending', mode)
     assert.equal(file!.file_size, null, mode)
-    assert.equal((await h.request(`/f/${file!.id}`, { method: 'HEAD' })).status, 404)
+    assert.equal((await h.request(`/f/${file!.id}/download`, { method: 'HEAD' })).status, 404)
     assert.ok(!h.mock.replies.some((reply) => replyText(reply).includes(`/f/${file!.id}`)))
     // 冻结该独立失败样本，避免后续样本触发它的重试干扰断言。
     await h.db.prepare('UPDATE files SET next_attempt_at=? WHERE id=?').bind(Date.now() + 3_600_000, file!.id).run()
@@ -87,7 +87,7 @@ test('登记拒绝错误Range、截断和超长探测，超限与404明确失败
     const file = await eventually(() => fileState(h, messageId), (value) => value?.status === 'failed')
     assert.equal(file!.file_size, null)
     assert.equal(file!.fail_reason, expectedReason)
-    assert.equal((await h.request(`/f/${file!.id}`)).status, 404)
+    assert.equal((await h.request(`/f/${file!.id}/download`)).status, 404)
     await eventually(async () => h.mock.replies, (replies) => replies.some((reply) => replyText(reply).includes(expectedReason === 'file_too_large' ? '大小超过上限' : '检查源文件权限')))
     assert.ok(!h.mock.replies.some((reply) => replyText(reply).includes(`/f/${file!.id}`)))
   }
@@ -180,7 +180,7 @@ test('探测尚未完成时撤回，迟到的成功结果不能激活或发布',
   assert.equal((await fileState(h, 'recall-during-probe'))!.status, 'deleted')
   assert.equal(await h.db.prepare("SELECT id FROM bot_jobs WHERE file_id=? AND id LIKE 'active:%'").bind(pending!.id).first(), null)
   assert.ok(!h.mock.replies.some((reply) => replyText(reply).includes(`/f/${pending!.id}`)))
-  for (const method of ['GET', 'HEAD']) assert.equal((await h.request(`/f/${pending!.id}`, { method })).status, 410)
+  for (const method of ['GET', 'HEAD']) assert.equal((await h.request(`/f/${pending!.id}/download`, { method })).status, 410)
 })
 
 test('并发登记合并Token请求，失效Token仅刷新并重试一次', async (t) => {
@@ -207,6 +207,6 @@ test('并发登记合并Token请求，失效Token仅刷新并重试一次', asyn
   const file = await register(h, 'refresh-invalid-token')
   assert.equal(rejected, 1)
   assert.equal(h.mock.tokenCalls, 2, '已失效Token只允许一次强制刷新')
-  assert.equal((await h.request(`/f/${file.id}`, { method: 'HEAD' })).status, 200)
+  assert.equal((await h.request(`/f/${file.id}/download`, { method: 'HEAD' })).status, 200)
   assert.equal(h.mock.ranges.filter((range) => range.key === 'refresh-invalid-token').length, 1)
 })

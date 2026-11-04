@@ -5,7 +5,7 @@ import { Readable } from 'node:stream'
 import { patternBytesAt, patternStream } from './file-pattern.ts'
 
 export type MockMode = 'ok' | 'throttle' | 'missing' | 'forbidden' | 'bad-range' | 'truncate' | 'oversize' | 'ignore-range'
-export interface MockFile { size: number; mode?: MockMode; mimeType?: string; headerDelayMs?: number }
+export interface MockFile { size: number; mode?: MockMode; mimeType?: string; headerDelayMs?: number; readDelayMs?: number }
 
 export function bytesAt(start: number, length: number): Buffer {
   return Buffer.from(patternBytesAt(start, length))
@@ -87,7 +87,20 @@ export function createMock() {
         })
         return new Response(broken, { status: 206, headers })
       }
-      return new Response(byteStream(start, actual), { status: 206, headers })
+      let body = byteStream(start, actual)
+      if (file.readDelayMs) {
+        const source = body.getReader()
+        body = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            await new Promise((resolve) => setTimeout(resolve, file.readDelayMs))
+            const { value, done } = await source.read()
+            if (done) controller.close()
+            else controller.enqueue(value)
+          },
+          cancel: (reason) => source.cancel(reason),
+        }, { highWaterMark: 0 })
+      }
+      return new Response(body, { status: 206, headers })
     }
     if (/\/open-apis\/im\/v1\/messages(?:\/[^/]+\/reply)?$/.test(url.pathname)) {
       if (replyFailures-- > 0) return Response.json({ code: 1 }, { status: 503 })
@@ -134,7 +147,7 @@ export async function startMock(port = 8790) {
   return { ...mock, server }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1]?.replaceAll('\\', '/').endsWith('/feishu-mock.ts') && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await startMock()
   console.log('模拟飞书已启动：http://127.0.0.1:8790；file-demo 为 100 MiB 可重复数据')
 }

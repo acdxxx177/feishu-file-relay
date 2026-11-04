@@ -1,6 +1,8 @@
 # 仅允许打包工具和本地 Workers 运行时安装所需的脚本。
 allowBuilds:
+  '@prisma/engines': true
   esbuild: true
+  prisma: true
   workerd: true
 # pnpm 安装时记录的新发布版本例外，限定到本次锁定的具体版本。
 minimumReleaseAgeExclude:

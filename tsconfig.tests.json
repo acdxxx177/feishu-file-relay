@@ -11,5 +11,6 @@
     "erasableSyntaxOnly": true,
     "skipLibCheck": true
   },
-  "include": ["tests/**/*.ts", "mocks/**/*.ts", "scripts/**/*.ts"]
+  "include": ["tests/**/*.ts", "mocks/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["tests/vps", "scripts/build-vps.ts", "scripts/db-schema-check.ts", "scripts/db-migrate-diff.ts", "scripts/test-d1-remote.ts"]
 }

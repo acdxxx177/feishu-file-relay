@@ -66,3 +66,7 @@ node node_modules/wrangler/bin/wrangler.js d1 delete feishu-relay-test-20261103-
 ```
 
 执行前核对 `.local/online-test.json` 中的账户、资源名称和数据库ID。生产Worker及生产数据库不在此清理范围内。
+
+## 浏览器分片新轮次
+
+用户另外授权在既有隔离资源执行新架构测试，新增响应预算4 GiB；旧512 MiB账本和exceededCpu记录不变。使用 `pnpm online:deploy:browser`、`pnpm online:tail:browser`、`pnpm online:test:browser`，合同、分阶段停止规则及无缓存比较命令见[浏览器下载说明](browser-downloads.md)。此授权不包含生产部署或生产文件登记。

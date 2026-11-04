@@ -1,35 +1,23 @@
-import { countDownload, getFile, markUnavailable } from '../db/files'
-import { fetchResource, notifyUnavailable, UpstreamError } from '../services/feishu'
+import { countDownload, getFile } from '../db/files'
+import { fetchResource, UpstreamError } from '../services/feishu'
+import { authorizeFile, sourceUnavailable, type DownloadContext } from '../lib/file-access'
 import type { RpcStub } from 'cloudflare:workers'
 import { CHUNK_SIZE, checkedBody, type ChunkRequest } from '../cache/chunk-entry'
 import { fileHeaders, publicError } from '../lib/headers'
 import { ifRangeMatches, parseRange } from '../lib/http-range'
 import type { FileRecord, SourceFile } from '../types'
 
-type DownloadContext = Pick<ExecutionContext, 'waitUntil'> & { exports?: Cloudflare.Exports }
-
-async function sourceUnavailable(env: Env, file: FileRecord, ctx: DownloadContext): Promise<void> {
-  if (await markUnavailable(env.DB, file.id)) {
-    ctx.waitUntil(notifyUnavailable(env, file).catch(() => {
-      console.log(JSON.stringify({ event: 'notification_failed', file_id: file.id }))
-    }))
-  }
-}
-
 export async function handleDownload(request: Request, env: Env, ctx: DownloadContext, id: string): Promise<Response> {
   const head = request.method === 'HEAD'
-  if (!/^[A-Za-z0-9]{22}$/.test(id)) return publicError(404, head)
-  let file: FileRecord | null
-  try { file = await getFile(env.DB, id) } catch { return publicError(503, head) }
-  if (!file) return publicError(404, head)
-  if (file.status === 'deleted' || file.status === 'unavailable') return publicError(410, head)
-  if (file.status !== 'active' || file.file_size === null) return publicError(404, head)
+  const authorized = await authorizeFile(env, id, head)
+  if (authorized instanceof Response) return authorized
+  const file: FileRecord = authorized
   const source: SourceFile = {
     id: file.id,
     message_id: file.message_id,
     file_key: file.file_key,
     version: file.version,
-    file_size: file.file_size,
+    file_size: file.file_size!,
   }
   const headers = fileHeaders(file)
   const useRange = ifRangeMatches(request.headers.get('If-Range'), headers.get('ETag')!, headers.get('Last-Modified')!)

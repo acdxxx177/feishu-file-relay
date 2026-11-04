@@ -1,5 +1,3 @@
-export type AppEnv = { Bindings: Env }
-
 export interface FileRecord {
   id: string
   message_id: string

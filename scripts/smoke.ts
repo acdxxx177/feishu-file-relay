@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 
 // 仅访问操作者已获授权的公开测试链接；本脚本不发送飞书消息、不登记文件。
-const url = process.env.DOWNLOAD_URL
+const inputUrl = process.env.DOWNLOAD_URL
+const url = inputUrl ? inputUrl.replace(/(\/f\/[A-Za-z0-9]{22})\/?$/, '$1/download') : undefined
 const expected = process.env.EXPECTED_SHA256?.toLowerCase()
 if (!url || !expected || !/^[a-f0-9]{64}$/.test(expected)) {
   throw new Error('请设置 DOWNLOAD_URL 和原文件 EXPECTED_SHA256；脚本会完整下载并验证续传')

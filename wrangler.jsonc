@@ -25,6 +25,8 @@
     "FEISHU_API_BASE": "https://open.feishu.cn",
     "FEISHU_ACCOUNTS_BASE": "https://accounts.feishu.cn",
     "MAX_FILE_SIZE": "1073741824",
+    "BROWSER_CHUNK_SIZE": "1048576",
+    "BROWSER_CHUNK_CACHE_ENABLED": "false",
     "WEBHOOK_MAX_SKEW_SECONDS": "300",
     "CHUNK_CACHE_TTL_SECONDS": "604800",
     "UPSTREAM_READ_TIMEOUT_MS": "30000"

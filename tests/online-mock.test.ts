@@ -163,7 +163,7 @@ test('真实服务绑定串联签名Webhook、D1、模拟机器人回复与公�
   const reply = await eventually<{ content: string } | null>(() => db.prepare('SELECT content FROM mock_replies LIMIT 1').first<{ content: string }>(), (value) => typeof value?.content === 'string')
   const link = /https:\/\/binding-test\.invalid\/f\/[A-Za-z0-9]{22}/.exec(reply!.content)?.[0]
   assert.ok(link, '必须从模拟机器人回复而非文件索引取得链接')
-  const response = await mf.dispatchFetch(link)
+  const response = await mf.dispatchFetch(`${link}/download`)
   assert.equal(response.status, 200)
   assert.deepEqual(Buffer.from(await response.arrayBuffer()), bytesAt(0, 10000))
   assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM mock_requests').first<{ n: number }>())?.n, 2)

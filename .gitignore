@@ -24,6 +24,7 @@ htmlcov/
 
 # Node.js and Workers generated files
 node_modules/
+src/generated/
 .wrangler/
 dist/
 worker-configuration.d.ts

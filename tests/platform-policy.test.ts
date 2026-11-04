@@ -22,9 +22,9 @@ test('平台授权模式无需名单，仍校验回调和单聊用户身份', { 
   const file = await eventually<{ id: string; status: string } | null>(() => h.db.prepare('SELECT id,status FROM files WHERE message_id=?').bind('platform-user')
     .first<{ id: string; status: string }>(), (row) => row?.status === 'active')
   await eventually(async () => h.mock.replies, (rows) => rows.some((row) => JSON.stringify(row).includes(file!.id)))
-  assert.equal((await h.request(`/f/${file!.id}`, { method: 'HEAD' })).status, 200)
+  assert.equal((await h.request(`/f/${file!.id}/download`, { method: 'HEAD' })).status, 200)
   await h.post(recall('platform-user'))
-  assert.equal((await h.request(`/f/${file!.id}`, { method: 'HEAD' })).status, 410)
+  assert.equal((await h.request(`/f/${file!.id}/download`, { method: 'HEAD' })).status, 410)
 })
 
 test('平台授权模式只列本人文件，只允许本人撤销，忽略遗留管理员配置', { timeout: 60000 }, async (t) => {
@@ -46,10 +46,10 @@ test('平台授权模式只列本人文件，只允许本人撤销，忽略遗�
   assert.ok(!listReply.includes(other.id))
   await h.post(event('platform-deny-revoke', { sender: 'ou_admin', type: 'text', content: JSON.stringify({ text: `撤销 ${owner.id}` }) }))
   await eventually(async () => h.mock.replies, (rows) => rows.some((row) => JSON.stringify(row).includes('仅上传者本人可以撤销')))
-  assert.equal((await h.request(`/f/${owner.id}`, { method: 'HEAD' })).status, 200)
+  assert.equal((await h.request(`/f/${owner.id}/download`, { method: 'HEAD' })).status, 200)
   await h.post(event('platform-owner-revoke', { sender: 'ou_owner', type: 'text', content: JSON.stringify({ text: `撤销 ${owner.id}` }) }))
-  await eventually(() => h.request(`/f/${owner.id}`, { method: 'HEAD' }).then((response) => response.status), (status) => status === 410)
-  assert.equal((await h.request(`/f/${other.id}`, { method: 'HEAD' })).status, 200)
+  await eventually(() => h.request(`/f/${owner.id}/download`, { method: 'HEAD' }).then((response) => response.status), (status) => status === 410)
+  assert.equal((await h.request(`/f/${other.id}/download`, { method: 'HEAD' })).status, 200)
 })
 
 test('错误接入策略和空白名单不接受登记', { timeout: 60000 }, async (t) => {

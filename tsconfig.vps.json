@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/vps/**/*.ts", "src/db/repository.ts", "src/db/prisma-*.ts", "src/db/d1-*.ts", "tests/vps/**/*.ts", "prisma.config.ts", "scripts/build-vps.ts", "scripts/db-schema-check.ts", "scripts/db-migrate-diff.ts", "scripts/test-d1-remote.ts"]
+}

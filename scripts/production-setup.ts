@@ -1,3 +1,4 @@
+import { buildBrowser } from './build-browser.ts'
 import { execFile } from 'node:child_process'
 import { createCipheriv, createHash, randomBytes } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -112,6 +113,7 @@ async function prepare(): Promise<void> {
 }
 
 async function deploy(): Promise<void> {
+  await buildBrowser()
   await prepare()
   let state = await manifest()
   if (!state) {

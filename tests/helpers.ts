@@ -9,7 +9,7 @@ export const base = 'https://dl.example.test'
 export const verificationToken = 'mock-verification-token'
 export const encryptKey = 'mock-encrypt-key'
 
-export async function setup(options: { cacheApi?: boolean; injectAbort?: boolean; bindings?: Record<string, string> } = {}) {
+export async function setup(options: { cacheApi?: boolean; injectAbort?: boolean; inspectorPort?: number; scriptPath?: string; downloadRateLimit?: number; bindings?: Record<string, string> } = {}) {
   const mock = createMock()
   const source = options.injectAbort ? {
     modules: [
@@ -27,16 +27,17 @@ export async function setup(options: { cacheApi?: boolean; injectAbort?: boolean
       ` },
       { type: 'ESModule' as const, path: '.local/relay.js', contents: await readFile('dist/index.js', 'utf8') },
     ],
-  } : { modules: true as const, scriptPath: 'dist/index.js' }
+  } : { modules: true as const, scriptPath: options.scriptPath ?? 'dist/index.js' }
   const mf = new Miniflare(convertV4MiniflareOptions({
     name: 'relay',
+    inspectorPort: options.inspectorPort,
     ...source,
     compatibilityDate: '2026-11-02',
     compatibilityFlags: ['enable_ctx_exports', 'enable_request_signal'],
     d1Databases: ['DB'],
     cacheAPI: options.cacheApi ?? true,
     unsafeDirectSockets: [{ host: '127.0.0.1', port: 0 }],
-    ratelimits: { DOWNLOAD_LIMITER: { namespace_id: '1001', simple: { limit: 60, period: 60 } } },
+    ratelimits: { DOWNLOAD_LIMITER: { namespace_id: '1001', simple: { limit: options.downloadRateLimit ?? 60, period: 60 } } },
     bindings: {
       PUBLIC_BASE_URL: base,
       FEISHU_API_BASE: 'https://mock-feishu.test',

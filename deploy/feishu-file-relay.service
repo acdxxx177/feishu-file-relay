@@ -1,0 +1,25 @@
+[Unit]
+Description=Feishu file relay
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=feishu-relay
+Group=feishu-relay
+WorkingDirectory=/opt/feishu-file-relay/current
+EnvironmentFile=/etc/feishu-file-relay.env
+ExecStart=/usr/bin/node /opt/feishu-file-relay/current/dist/vps/main.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=70
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+LimitNOFILE=8192
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

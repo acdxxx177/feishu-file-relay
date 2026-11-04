@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { createCipheriv, createHash, randomBytes } from 'node:crypto'
-import { closeSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { closeSync, createReadStream, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdir, open, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 import { promisify } from 'node:util'
 import { patternBytesAt } from '../mocks/file-pattern.ts'
+import { DownloadError, downloadChunks, type DownloadMetadata } from '../src/browser/download-controller.ts'
 
 interface Manifest {
   accountId: string
@@ -51,19 +52,23 @@ interface CancellationResult {
   sourceRequests: Array<{ status: number; bytes: number; outcome: string; colo: string | null }>
 }
 interface Report {
+  buildHash?: string
+  buildHashes?: string[]
+  browserTrials?: Array<Record<string, unknown>>
   accountId: string
   gatewayName: string
   gatewayUrl: string
   budgetBytes: number
   chargedBytes: number
   receivedBytes: number
-  runs: Array<{ runId: string; startedAt: string; finishedAt?: string; cases: CaseResult[]; http: HttpResult[]; cache: unknown[]; integrity: IntegrityResult[]; cancellation: CancellationResult[]; platformLimited: boolean; platformLimits: Array<{ time?: string; worker?: string; outcome?: string }> }>
+  runs: Array<{ runId: string; startedAt: string; finishedAt?: string; buildHash?: string; configHash?: string; gatewayVersion?: string; cases: CaseResult[]; http: HttpResult[]; cache: unknown[]; integrity: IntegrityResult[]; cancellation: CancellationResult[]; platformLimited: boolean; platformLimits: Array<{ time?: string; worker?: string; outcome?: string }> }>
 }
 interface Published { messageId: string; fileKey: string; fileName: string; url: string; size: number }
 class SkipCase extends Error {}
 
 const MiB = 1024 * 1024
-const budget = 512 * MiB
+const browserMode = process.argv.includes('--browser')
+const budget = (browserMode ? 4096 : 512) * MiB
 const cancelOnly = process.argv.includes('--cancel-only')
 const manifestIndex = process.argv.indexOf('--manifest')
 const manifestPath = manifestIndex >= 0 ? process.argv[manifestIndex + 1] : '.local/online-test.json'
@@ -98,7 +103,7 @@ const employee = allowed.find((value) => value !== admin)
 const other = allowed.find((value) => value !== admin && value !== employee)
 if (!employee || !admin || !other || !secrets.FEISHU_ENCRYPT_KEY) throw new Error('模拟配置需要不同的上传者、管理员、其他白名单用户及 Encrypt Key')
 
-const reportPath = '.local/online-results.json'
+const reportPath = browserMode ? '.local/browser-online-results.json' : '.local/online-results.json'
 await mkdir('.local', { recursive: true })
 const lockPath = '.local/online-test.lock'
 const lockToken = randomBytes(16).toString('hex')
@@ -144,6 +149,23 @@ function save(): Promise<void> {
 }
 await save()
 
+if (browserMode) {
+  const deployed = JSON.parse(await readFile('.local/browser-online-deployment.json', 'utf8')) as { gatewayName: string; gatewayVersion: string; artifactPath?: string; buildHash: string; configHash: string }
+  const buildHash = createHash('sha256').update(await readFile(deployed.artifactPath ?? 'dist/index.js')).digest('hex')
+  if (deployed.gatewayName !== manifest.gatewayName || !deployed.gatewayVersion || deployed.buildHash !== buildHash || deployed.configHash !== createHash('sha256').update(actualConfigText).digest('hex')) throw new Error('未找到与本地构建/配置匹配的隔离部署证据')
+  // 构建变化记录到新 run，但共享总预算不能重置；保留首个构建的历史字段。
+  report.buildHash ??= buildHash
+  report.buildHashes = [...new Set([...(report.buildHashes ?? []), report.buildHash, buildHash])]
+  const { stdout } = await promisify(execFile)(process.execPath, [path.resolve('node_modules/wrangler/bin/wrangler.js'), 'deployments', 'list', '--config', manifest.configPath, '--json'], { windowsHide: true, timeout: 60000, env: { ...process.env, CLOUDFLARE_ACCOUNT_ID: manifest.accountId } })
+  const active = (JSON.parse(stdout) as Array<{ created_on: string; versions: Array<{ version_id: string; percentage: number }> }>).sort((a, b) => Date.parse(b.created_on) - Date.parse(a.created_on))[0]
+  if (active?.versions.length !== 1 || active.versions[0].version_id !== deployed.gatewayVersion || active.versions[0].percentage !== 100) throw new Error('隔离 Worker 活动版本与测试构建不匹配')
+  run.buildHash = buildHash
+  run.configHash = deployed.configHash
+  run.gatewayVersion = deployed.gatewayVersion
+  report.browserTrials ??= []
+  await save()
+}
+
 const exec = promisify(execFile)
 let sqlSequence = 0
 const sqlValue = (value: string) => `'${value.replace(/'/g, "''")}'`
@@ -175,10 +197,11 @@ async function sql<T extends object = Record<string, unknown>>(query: string): P
 }
 
 let platformLimited = false
+let platformSince = Date.now()
 async function refreshPlatformLimit(): Promise<void> {
   try {
-    const marker = JSON.parse(await readFile('.local/online-platform-limits.json', 'utf8')) as { limited?: boolean; time?: string; worker?: string; outcome?: string }
-    if (marker.limited && (marker.worker === manifest.gatewayName || marker.worker === manifest.mockName)) {
+    const marker = JSON.parse(await readFile(browserMode ? '.local/browser-online-platform-limits.json' : '.local/online-platform-limits.json', 'utf8')) as { limited?: boolean; time?: string; worker?: string; outcome?: string }
+    if ((!browserMode || !!marker.time && Date.parse(marker.time) >= platformSince) && marker.limited && (marker.worker === manifest.gatewayName || marker.worker === manifest.mockName)) {
       platformLimited = true
       if (!run.platformLimits.some((item) => item.time === marker.time && item.worker === marker.worker && item.outcome === marker.outcome)) {
         run.platformLimits.push({ time: marker.time, worker: marker.worker, outcome: marker.outcome })
@@ -208,11 +231,11 @@ function release() {
 async function withResponse<T>(requestPath: string, init: RequestInit, maximumBytes: number, consume: (response: Response) => Promise<T>): Promise<T> {
   await acquire()
   try {
-    if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0 || report.chargedBytes + maximumBytes > budget) throw new Error('512 MiB 流量预算不足，本轮停止该下载')
+    if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0 || report.chargedBytes + maximumBytes > budget) throw new Error('本轮持久化流量预算不足，停止该下载')
     // 先保守扣除完整响应上限并落盘，进程中断也不会在重启时重新获得预算。
     report.chargedBytes += maximumBytes
     await save()
-    if (requestPath.startsWith('/f/')) {
+    if (requestPath.startsWith('/f/') || requestPath.startsWith('/api/files/')) {
       const at = Math.max(Date.now(), nextDownloadAt)
       nextDownloadAt = at + 1200
       await setTimeout(Math.max(0, at - Date.now()))
@@ -307,7 +330,7 @@ async function register(label: string, size: number): Promise<Published> {
   if (!link || new URL(link).origin !== gateway.origin) throw new Error('机器人回复没有当前测试域名的公开链接')
   return { messageId, fileKey, fileName, size, url: link }
 }
-function filePath(file: Published) { return new URL(file.url).pathname }
+function filePath(file: Published) { return `${new URL(file.url).pathname}/download` }
 function expectedHash(start: number, length: number): string {
   const hash = createHash('sha256')
   for (let offset = start; offset < start + length; offset += 65536) hash.update(patternBytesAt(offset, Math.min(65536, start + length - offset)))
@@ -415,7 +438,9 @@ async function caseRun(name: string, body: () => Promise<void>, skip?: string): 
 }
 
 try {
-  if (cancelOnly) {
+  if (browserMode) {
+    await runBrowserTrials()
+  } else if (cancelOnly) {
     await caseRun('冷源响应头前取消（1 MiB 隔离探测）', async () => {
       const file = await register('cancel-headers', MiB)
       await sql(`UPDATE mock_files SET mode='slow-headers',header_delay_ms=5000 WHERE message_id=${sqlValue(file.messageId)};`)
@@ -570,10 +595,171 @@ try {
 } finally {
   await setTimeout(2000)
   await refreshPlatformLimit()
-  run.platformLimited = platformLimited
+  run.platformLimited = platformLimited || run.platformLimits.length > 0
   run.finishedAt = new Date().toISOString()
   await save()
   const summary = run.cases.reduce((counts, result) => { counts[result.status]++; return counts }, { passed: 0, failed: 0, skipped: 0 })
-  console.log(JSON.stringify({ runId, gatewayUrl: gateway.origin, summary, chargedBytes: report.chargedBytes, receivedBytes: report.receivedBytes, budgetBytes: budget, platformLimited, reportPath }))
+  console.log(JSON.stringify({ runId, gatewayUrl: gateway.origin, summary, chargedBytes: report.chargedBytes, receivedBytes: report.receivedBytes, budgetBytes: budget, platformLimited: run.platformLimited, reportPath }))
 }
 if (run.cases.some((result) => result.status === 'failed')) process.exitCode = 1
+
+async function browserMetadata(file: Published): Promise<{ id: string; etag: string }> {
+  return withResponse(`/api/files/${new URL(file.url).pathname.split('/')[2]}`, {}, 65536, async (response) => {
+    assert.equal(response.status, 200)
+    return await response.json() as { id: string; etag: string }
+  })
+}
+
+async function browserFull(file: Published, chunkSize: number, interrupt = false): Promise<void> {
+  const metadata = await browserMetadata(file) as DownloadMetadata
+  metadata.size = file.size
+  metadata.chunkSize = chunkSize
+  const outputPath = path.resolve('.local', `browser-output-${runId}-${metadata.id}.bin`)
+  const output = await open(outputPath, 'wx')
+  let interrupted = false
+  try {
+    await downloadChunks(metadata, {
+      async write(position, bytes) {
+        let written = 0
+        while (written < bytes.byteLength) written += (await output.write(bytes, written, bytes.byteLength - written, position + written)).bytesWritten
+      },
+      truncate: (size) => output.truncate(size), close: () => output.close(), abort: () => output.close(),
+    }, {
+      signal: new AbortController().signal,
+      async wait(milliseconds) {
+        await setTimeout(Math.max(2000, milliseconds))
+        await refreshPlatformLimit()
+        if (platformLimited) throw new DownloadError('本阶段出现平台超限，停止重试')
+      },
+      async fetcher(_input, init) {
+        await refreshPlatformLimit()
+        if (platformLimited) throw new DownloadError('本阶段出现平台超限，停止后续分片')
+        const range = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get('Range')!)!
+        const maximum = Number(range[2]) - Number(range[1]) + 1
+        // 将预算包装器的生命周期绑定到浏览器控制器消费/取消正文，而非收到响应头。
+        return new Promise<Response>((resolve, reject) => {
+          void withResponse(`/api/files/${metadata.id}/chunk`, init ?? {}, maximum, async (response) => {
+            if (!response.body) { resolve(new Response(null, { status: response.status, headers: response.headers })); return }
+            const reader = response.body.getReader()
+            await new Promise<void>((finish) => {
+              let bytes = 0
+              resolve(new Response(new ReadableStream<Uint8Array>({
+                async pull(controller) {
+                  try {
+                    const { value, done } = await reader.read()
+                    if (done) { controller.close(); finish(); return }
+                    bytes += value.byteLength
+                    if (interrupt && !interrupted && bytes > 137123) {
+                      interrupted = true
+                      void reader.cancel().catch(() => {})
+                      throw new TypeError('controlled interruption')
+                    }
+                    controller.enqueue(value)
+                  } catch (error) { controller.error(error); finish() }
+                },
+                cancel(reason) { finish(); void reader.cancel(reason).catch(() => {}) },
+              }), { status: response.status, headers: response.headers }))
+            })
+          }).catch(reject)
+        })
+      },
+    })
+    const hash = createHash('sha256')
+    let total = 0
+    for await (const value of createReadStream(outputPath)) { hash.update(value); total += value.length }
+    const actual = hash.digest('hex')
+    assert.equal(total, file.size)
+    assert.equal(actual, await recordIntegrity(interrupt ? 'resumed' : 'full', file, 0, file.size - 1, total, actual))
+  } finally {
+    await output.close().catch(() => {})
+    await unlink(outputPath).catch(() => {})
+  }
+}
+
+async function trialCpu(ids: string[]): Promise<{ gateway: number[]; chunkEntry: number[] }> {
+  await setTimeout(2000)
+  try {
+    const lines = (await readFile('.local/browser-online-tail.jsonl', 'utf8')).trim().split('\n')
+    const result = { gateway: [] as number[], chunkEntry: [] as number[] }
+    for (const line of lines) {
+      const row = JSON.parse(line) as { time: string; worker: string; cpuTime?: number; logs?: Array<{ event?: string; file_id?: string }> }
+      if (Date.parse(row.time) < platformSince || row.worker !== manifest.gatewayName || typeof row.cpuTime !== 'number') continue
+      if (row.logs?.some((log) => log.event === 'browser_chunk' && ids.includes(log.file_id ?? ''))) result.gateway.push(row.cpuTime)
+      if (row.logs?.some((log) => log.event === 'chunk' && ids.includes(log.file_id ?? ''))) result.chunkEntry.push(row.cpuTime)
+    }
+    return result
+  } catch { return { gateway: [], chunkEntry: [] } }
+}
+
+async function runBrowserTrials(): Promise<void> {
+  const candidates: Array<{ mib: number; cpu: number[]; durationMs: number }> = []
+  const cacheEnabled = (actualConfig.vars as Record<string, string>).BROWSER_CHUNK_CACHE_ENABLED !== 'false'
+  if (process.argv.includes('--large-only')) {
+    const prior = [...(report.browserTrials ?? [])].reverse().find((trial) => trial.mib === 1 && trial.cacheEnabled === cacheEnabled && trial.passed === true)
+    const sourceRun = prior ? report.runs.find((item) => item.runId === prior.runId) : undefined
+    const coverage = prior?.cpuCoverage as { gateway?: number[]; chunkEntry?: number[] } | undefined
+    const cpu = [...coverage?.gateway ?? [], ...coverage?.chunkEntry ?? []]
+    // 明确的边界复核：至少保留 1ms 余量，且必须复用同一活动构建/配置的完整样本。
+    if (!sourceRun || sourceRun.buildHash !== run.buildHash || sourceRun.configHash !== run.configHash || sourceRun.gatewayVersion !== run.gatewayVersion || !coverage || (coverage.gateway?.length ?? 0) < 6 || (coverage.chunkEntry?.length ?? 0) < 6 || Math.max(...cpu) > 9) throw new Error('缺少同一构建下两类CPU均低于10ms的完整1MiB候选证据')
+    candidates.push({ mib: 1, cpu, durationMs: Number(prior!.durationMs) })
+    report.browserTrials!.push({ runId, reviewOnly: true, sourceRun: sourceRun.runId, maximumCpuMs: 9, marginMs: 1, cacheEnabled })
+  } else {
+  const smallPassed = await caseRun('1 MiB 新分片基础完整性', async () => { await browserFull(await register('browser-basic', MiB), MiB) })
+  if (!smallPassed) return
+  for (const mib of [16, 8, 4, 1]) {
+    platformLimited = false
+    platformSince = Date.now()
+    const ids: string[] = []
+    const started = Date.now()
+    const passed = await caseRun(`${mib} MiB 分片冷/热三组 SHA-256（缓存${cacheEnabled ? '开启' : '关闭'}）`, async () => {
+      for (let sample = 0; sample < 3; sample++) {
+        const file = await register(`chunk-${mib}-${sample}`, mib * MiB)
+        ids.push((await browserMetadata(file)).id)
+        await browserFull(file, mib * MiB)
+        const before = await originCounts(file)
+        await browserFull(file, mib * MiB)
+        const after = await originCounts(file)
+        run.cache.push({ mib, cacheEnabled, before, after })
+        await refreshPlatformLimit()
+        if (platformLimited) throw new Error('候选分片触发平台限制')
+      }
+    })
+    const coverage = await trialCpu(ids)
+    const cpu = [...coverage.gateway, ...coverage.chunkEntry]
+    const durationMs = Date.now() - started
+    report.browserTrials!.push({ runId, mib, cacheEnabled, passed, cpuMs: cpu, cpuCoverage: coverage, durationMs, platformLimited, ids })
+    await save()
+    if (passed && coverage.gateway.length >= 6 && coverage.chunkEntry.length >= 6 && Math.max(...cpu) <= 8) candidates.push({ mib, cpu, durationMs })
+  }
+  }
+  // 可观测 CPU 不足也必须停在未验收状态，不能把没有报错当成满足 Free CPU 预算。
+  const best = candidates.sort((a, b) => a.durationMs / a.mib - b.durationMs / b.mib || b.mib - a.mib)[0]
+  if (!best) {
+    await caseRun('100/500/1024 MiB 扩大验证', async () => {}, '没有具备 CPU 余量和完整观测的候选；不扩大流量')
+    return
+  }
+  report.browserTrials!.push({ runId, selectedMiB: best.mib, cacheEnabled })
+  await save()
+  platformLimited = false
+  platformSince = Date.now()
+  let stable = true
+  for (const mib of [100, 500, 1024]) {
+    stable = await caseRun(`${mib} MiB 独立分片完整下载 SHA-256`, async () => {
+      const file = await register(`browser-large-${mib}`, mib * MiB)
+      await browserFull(file, best.mib * MiB)
+      const id = new URL(file.url).pathname.split('/')[2]
+      const cpuCoverage = await trialCpu([id])
+      const requests = run.http.filter((item) => item.path === `/api/files/${id}/chunk`).length
+      report.browserTrials!.push({ runId, fullSizeMiB: mib, requests, cpuCoverage, cacheEnabled })
+      await save()
+      // 小样本余量不能代替整文件证据；缺少调用或出现标称预算外 CPU 都阻止扩大。
+      if (cpuCoverage.gateway.length < requests || cpuCoverage.chunkEntry.length < requests || Math.max(...cpuCoverage.gateway, ...cpuCoverage.chunkEntry) >= 10) throw new Error('完整性已通过，但CPU超出标称预算或Tail覆盖不足；停止扩大')
+      await setTimeout(2000)
+      await refreshPlatformLimit()
+      if (platformLimited) throw new Error('扩大验证出现平台限制')
+    }, stable && !platformLimited ? undefined : '前一级未通过，停止扩大')
+  }
+  await caseRun('1 GiB 分片中断后重试 SHA-256', async () => {
+    await browserFull(await register('browser-recovery', 1024 * MiB), best.mib * MiB, true)
+  }, stable && !platformLimited ? undefined : '完整下载阶段未通过，不执行额外大文件')
+}

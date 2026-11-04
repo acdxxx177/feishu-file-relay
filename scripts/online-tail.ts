@@ -4,9 +4,10 @@ import { resolve } from 'node:path'
 
 interface Manifest { accountId: string; gatewayName: string; mockName: string; configPath: string; mockConfigPath: string }
 const manifest = JSON.parse(await readFile('.local/online-test.json', 'utf8')) as Manifest
-const logPath = '.local/online-tail.jsonl'
-const limitPath = '.local/online-platform-limits.json'
-const stopPath = '.local/online-tail.stop'
+const browserMode = process.argv.includes('--browser')
+const logPath = browserMode ? '.local/browser-online-tail.jsonl' : '.local/online-tail.jsonl'
+const limitPath = browserMode ? '.local/browser-online-platform-limits.json' : '.local/online-platform-limits.json'
+const stopPath = browserMode ? '.local/browser-online-tail.stop' : '.local/online-tail.stop'
 await unlink(stopPath).catch(() => {})
 const allowedKeys = new Set(['event', 'file_id', 'status', 'bytes', 'index', 'cache', 'origin_requests', 'origin_calls', 'duration_ms', 'attempt', 'attempts'])
 let writing = Promise.resolve()
@@ -85,4 +86,4 @@ const stop = () => { clearInterval(stopWatcher); for (const child of children) c
 const stopWatcher = setInterval(() => { void access(stopPath).then(stop, () => {}) }, 2000)
 process.on('SIGINT', stop)
 process.on('SIGTERM', stop)
-setTimeout(stop, 30 * 60 * 1000)
+setTimeout(stop, (browserMode ? 90 : 30) * 60 * 1000)

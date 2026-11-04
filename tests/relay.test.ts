@@ -44,7 +44,7 @@ test('完整/单 Range/If-Range/HEAD、中文文件名与预取', { timeout: 600
   const h = await setup()
   t.after(() => h.mf.dispose())
   const file = await register(h, 'ranges', 40000)
-  const path = `/f/${file.id}`
+  const path = `/f/${file.id}/download`
   const originBefore = h.mock.ranges.length
   const head = await h.request(path, { method: 'HEAD' })
   assert.equal(head.status, 200)
@@ -87,7 +87,7 @@ test('完整/单 Range/If-Range/HEAD、中文文件名与预取', { timeout: 600
   assert.equal(matched.status, 206)
   assert.deepEqual(Buffer.from(await matched.arrayBuffer()), bytesAt(10, 11))
   assert.equal((await h.request('/f/invalid')).status, 404)
-  assert.equal((await h.request(`/f/${'A'.repeat(22)}`)).status, 404)
+  assert.equal((await h.request(`/f/${'A'.repeat(22)}/download`)).status, 404)
   assert.equal((await h.request(`/chunks/${file.id}/v1/0`)).status, 404)
 })
 
@@ -99,17 +99,17 @@ test('撤回墓碑、并发登记、热缓存撤回后 GET/HEAD 410', { timeout:
   await h.post(event('recall-first'))
   assert.equal(await h.db.prepare('SELECT id FROM files WHERE message_id=?').bind('recall-first').first(), null)
   const file = await register(h, 'warm')
-  const warm = await h.request(`/f/${file.id}`)
+  const warm = await h.request(`/f/${file.id}/download`)
   assert.equal(warm.status, 200)
   await warm.arrayBuffer()
   const originCalls = h.mock.ranges.length
-  const warmAgain = await h.request(`/f/${file.id}`)
+  const warmAgain = await h.request(`/f/${file.id}/download`)
   await warmAgain.arrayBuffer()
   assert.equal(h.mock.ranges.length, originCalls, '重复下载应命中分片缓存')
   await h.post(recall('warm'))
   await h.post(event('warm', { eventId: 'late-file-event' }))
   for (const method of ['GET', 'HEAD']) {
-    const response = await h.request(`/f/${file.id}`, { method })
+    const response = await h.request(`/f/${file.id}/download`, { method })
     assert.equal(response.status, 410)
     assert.equal(response.headers.get('cache-control'), 'no-store')
   }
@@ -124,7 +124,7 @@ test('撤销权限、管理员、我的链接与统计', { timeout: 60000 }, asy
   const h = await setup()
   t.after(() => h.mf.dispose())
   const file = await register(h, 'commands')
-  const path = `/f/${file.id}`
+  const path = `/f/${file.id}/download`
   await h.request(path, { method: 'HEAD' })
   const resumed = await h.request(path, { headers: { Range: 'bytes=10-20' } })
   await resumed.arrayBuffer()
@@ -137,11 +137,11 @@ test('撤销权限、管理员、我的链接与统计', { timeout: 60000 }, asy
   assert.equal((await h.request(path, { method: 'HEAD' })).status, 200)
   await h.post(event('my-links', { type: 'text', content: JSON.stringify({ text: '我的链接' }) }))
   await eventually(async () => h.mock.replies, (replies) => replies.filter((reply) => JSON.stringify(reply).includes(file.id)).length >= 2)
-  await h.post(event('owner-revoke', { type: 'text', content: JSON.stringify({ text: `撤销 https://dl.example.test${path}` }) }))
+  await h.post(event('owner-revoke', { type: 'text', content: JSON.stringify({ text: `撤销 https://dl.example.test/f/${file.id}` }) }))
   await eventually(() => h.request(path, { method: 'HEAD' }).then((response) => response.status), (status) => status === 410)
   const adminFile = await register(h, 'admin-target')
   await h.post(event('admin-revoke', { sender: 'ou_admin', type: 'text', content: JSON.stringify({ text: `撤销 ${adminFile.id}` }) }))
-  await eventually(() => h.request(`/f/${adminFile.id}`, { method: 'HEAD' }).then((response) => response.status), (status) => status === 410)
+  await eventually(() => h.request(`/f/${adminFile.id}/download`, { method: 'HEAD' }).then((response) => response.status), (status) => status === 410)
 })
 
 test('源错误、损坏响应与失效通知', { timeout: 60000 }, async (t) => {
@@ -150,7 +150,7 @@ test('源错误、损坏响应与失效通知', { timeout: 60000 }, async (t) =>
   for (const mode of ['throttle', 'bad-range', 'ignore-range'] as const) {
     const file = await register(h, `error-${mode}`)
     h.mock.files.get(`error-${mode}`)!.mode = mode
-    const response = await h.request(`/f/${file.id}`)
+    const response = await h.request(`/f/${file.id}/download`)
     assert.equal(response.status, 503, mode)
     assert.ok(response.headers.get('retry-after'))
     assert.equal((await h.db.prepare('SELECT status FROM files WHERE id=?').bind(file.id).first<{ status: string }>())?.status, 'active')
@@ -158,19 +158,19 @@ test('源错误、损坏响应与失效通知', { timeout: 60000 }, async (t) =>
   for (const mode of ['truncate', 'oversize'] as const) {
     const file = await register(h, `error-${mode}`)
     h.mock.files.get(`error-${mode}`)!.mode = mode
-    const response = await h.request(`/f/${file.id}`)
+    const response = await h.request(`/f/${file.id}/download`)
     if (response.status === 200) await assert.rejects(() => response.arrayBuffer(), mode)
     else assert.equal(response.status, 503)
     h.mock.files.get(`error-${mode}`)!.mode = 'ok'
-    const repaired = await h.request(`/f/${file.id}`)
+    const repaired = await h.request(`/f/${file.id}/download`)
     assert.equal(repaired.status, 200)
     assert.deepEqual(Buffer.from(await repaired.arrayBuffer()), bytesAt(0, 10000), '损坏分片不得缓存')
   }
   const file = await register(h, 'gone')
   h.mock.files.get('gone')!.mode = 'missing'
   const before = h.mock.replies.length
-  assert.equal((await h.request(`/f/${file.id}`)).status, 410)
-  assert.equal((await h.request(`/f/${file.id}`)).status, 410)
+  assert.equal((await h.request(`/f/${file.id}/download`)).status, 410)
+  assert.equal((await h.request(`/f/${file.id}/download`)).status, 410)
   await eventually(async () => h.mock.replies.length, (n) => n > before)
   assert.equal(h.mock.replies.filter((reply) => JSON.stringify(reply).includes('无法读取')).length, 1)
 })

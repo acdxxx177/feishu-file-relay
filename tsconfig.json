@@ -1,10 +1,15 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "ESNext.Disposable"],
+    "lib": [
+      "ES2022",
+      "ESNext.Disposable"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "types": ["./worker-configuration.d.ts"],
+    "types": [
+      "./worker-configuration.d.ts"
+    ],
     "strict": true,
     "noEmit": true,
     "isolatedModules": true,
@@ -12,5 +17,17 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "worker-configuration.d.ts"]
+  "include": [
+    "src/**/*.ts",
+    "worker-configuration.d.ts"
+  ],
+  "exclude": [
+    "src/browser/download-controller.ts",
+    "src/vps",
+    "src/generated",
+    "src/db/repository.ts",
+    "src/db/prisma-repository.ts",
+    "src/db/d1-http.ts",
+    "src/db/prisma-d1-adapter.ts"
+  ]
 }

@@ -1,0 +1,17 @@
+# VPS metadata repository
+
+The Node application uses `RelayRepository`; Prisma and D1 response types do not cross this interface. The existing Worker implementation in `files.ts` is retained only for the rollback build and baseline tests.
+
+Prisma 7.10.1's official `PrismaD1` Node entry accepts `CLOUDFLARE_D1_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `CLOUDFLARE_DATABASE_ID`. Inspection of the installed `index-node.mjs` confirmed that its HTTP client has no injected fetch hook, does not expose `served_by_primary`, and implements transaction commit/rollback as no-ops. The relay therefore uses a narrow `SqlDriverAdapterFactory` with the same official Prisma adapter contract, not a simulated Workers binding. It rejects transactions and schema scripts before I/O. The supported scalar surface is deliberately restricted to the existing metadata schema.
+
+All HTTP queries and batches share one sliding five-minute budget. Default 900 calls include a 100-call control reserve unavailable to download authorization/statistics. All results require `success`, the expected statement count, and `served_by_primary: true`. There is no authorization cache or fallback to replicas. Failure, missing proof, or exhaustion fails closed. This is a safety check, not evidence that a real remote D1 endpoint has been validated.
+
+Registration/event deduplication, recall tombstones/deletion, activation/outbox, and unavailable/outbox execute as one REST batch. Batch support, rollback, connection-local `changes()`, and primary responses must still be verified in an explicitly selected isolated remote database before production use. Local SQLite tests only prove the SQL and adapter protocol contract. No transport-level write retry is permitted: a lost response may represent a committed transaction. Event replay is reconciled by durable identifiers; claims recover through lease expiry. Count increments are best effort and are not replayed after an ambiguous outcome.
+
+Jobs and file validation use `(id, attempts, lease_until)` fencing when finishing/retrying. The schema is unchanged. TEXT timestamps retain SQLite's `YYYY-MM-DD HH:mm:ss`; millisecond lease/retry values and counts use Prisma BigInt and explicit safe-integer conversion at the repository boundary. SQL CHECK constraints remain authoritative even though Prisma cannot represent them completely.
+
+## Migration boundary
+
+`prisma/schema.prisma` is the type model, not permission to rewrite existing tables. Generate the client with `pnpm exec prisma generate`; validate with `pnpm exec prisma validate`. Generate a candidate diff from an isolated copy of the existing schema, inspect all CHECK constraints/defaults/indexes, and put reviewed SQL in the existing `migrations/` sequence. Use explicit Wrangler D1 migration commands. Never use `db push`, `migrate reset`, automatic startup migrations, or a generated schema replacement on production. Existing `0001_init.sql` and D1 migration history must be adopted without replay. There is no schema change required for this runtime migration.
+
+The fake D1 transport tests use SQLite transactions to emulate REST batch. Real REST atomicity, parameter representation, primary metadata, quota behavior and remote failure outcomes remain separate deployment gates; no production network calls are made by the default tests.

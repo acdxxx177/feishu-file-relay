@@ -14,7 +14,7 @@ test('10 个并发 1 GiB 下载内容完整且共享分片回源', { timeout: 12
   const file = await register(h, 'stress-1g', size)
   const started = Date.now()
   const downloads = await Promise.all(Array.from({ length: 10 }, async () => {
-    const response = await h.request(`/f/${file.id}`)
+    const response = await h.request(`/f/${file.id}/download`)
     assert.equal(response.status, 200)
     assert.equal(response.headers.get('content-length'), String(size))
     return digest(response)

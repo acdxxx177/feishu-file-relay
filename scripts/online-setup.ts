@@ -2,7 +2,8 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
+import { buildBrowser } from './build-browser.ts'
 
 const execute = promisify(execFile)
 const root = process.cwd()
@@ -56,7 +57,7 @@ async function configure(manifest: Manifest): Promise<void> {
     account_id: manifest.accountId,
     main: resolve(root, 'src/index.ts'),
     services: [{ binding: 'FEISHU_MOCK', service: manifest.mockName }],
-    vars: { ...(test.vars as Configuration), PUBLIC_BASE_URL: manifest.gatewayUrl || 'https://online-test.invalid' },
+    vars: { ...(test.vars as Configuration), PUBLIC_BASE_URL: manifest.gatewayUrl || 'https://online-test.invalid', ...(process.argv.includes('--browser') ? { MAX_FILE_SIZE: '1073741824', BROWSER_CHUNK_SIZE: String(Number(process.argv.find((arg) => arg.startsWith('--chunk-mib='))?.split('=')[1] ?? 16) * 1024 * 1024), BROWSER_CHUNK_CACHE_ENABLED: process.argv.includes('--no-chunk-cache') ? 'false' : 'true' } : {}) },
     d1_databases: [{ binding: 'DB', database_name: manifest.databaseName, database_id: manifest.databaseId,
       migrations_dir: resolve(root, 'migrations'), remote: false }],
     observability: { enabled: true, head_sampling_rate: 1, logs: { invocation_logs: false }, traces: { enabled: true, head_sampling_rate: 0.01 } },
@@ -122,6 +123,16 @@ if (!['prepare', 'deploy'].includes(command)) throw new Error('仅支持prepare�
 const manifest = await prepare()
 console.log(JSON.stringify({ phase: command, gateway: manifest.gatewayName, mock: manifest.mockName, database: manifest.databaseName }))
 if (command === 'deploy') {
+  await buildBrowser()
+  if (process.argv.includes('--browser') && manifest.databaseId === '00000000-0000-0000-0000-000000000000') throw new Error('浏览器测试只允许复用既有隔离资源')
+  const browserArtifact = resolve(local, 'browser-deploy-bundle/index.js')
+  if (process.argv.includes('--browser')) {
+    // 先完整打包，再部署同一产物；不能把旧 dist 的哈希当成本次实际部署代码。
+    await wrangler(['deploy', '--dry-run', '--config', manifest.configPath, '--outdir', resolve(local, 'browser-deploy-bundle')], manifest.accountId)
+    await readFile(browserArtifact)
+  }
+  const deployArguments = (config: string) => ['deploy', ...(process.argv.includes('--browser') && config === manifest.configPath ? [browserArtifact, '--no-bundle'] : []), '--config', config]
+  let gatewayVersion: string | undefined
   // 远程操作只针对本脚本生成并保存在清单中的隔离资源，不自动改写生产配置。
   if (manifest.databaseId === '00000000-0000-0000-0000-000000000000') {
     const output = await wrangler(['d1', 'create', manifest.databaseName, '--location', 'apac', '--update-config=false'], manifest.accountId)
@@ -135,7 +146,8 @@ if (command === 'deploy') {
     await wrangler(['d1', 'migrations', 'apply', 'DB', '--remote', '--config', config], manifest.accountId)
   }
   for (const config of [manifest.mockConfigPath, manifest.configPath]) {
-    const output = await wrangler(['deploy', '--config', config], manifest.accountId)
+    const output = await wrangler(deployArguments(config), manifest.accountId)
+    if (config === manifest.configPath) gatewayVersion = /Current Version ID:\s*([a-f0-9-]{36})/.exec(output)?.[1]
     await wrangler(['secret', 'bulk', manifest.secretsPath, '--config', config], manifest.accountId)
     if (config === manifest.configPath) {
       const gatewayUrl = output.match(/https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev/)?.[0]
@@ -143,8 +155,13 @@ if (command === 'deploy') {
       manifest.gatewayUrl = gatewayUrl
       await save(manifest)
       await configure(manifest)
-      await wrangler(['deploy', '--config', config], manifest.accountId)
+      const finalOutput = await wrangler(deployArguments(config), manifest.accountId)
+      gatewayVersion = /Current Version ID:\s*([a-f0-9-]{36})/.exec(finalOutput)?.[1]
     }
+  }
+  if (process.argv.includes('--browser')) {
+    if (!gatewayVersion) throw new Error('缺少隔离 Gateway 部署版本，拒绝标记为可测试构建')
+    await writeFile(resolve(local, 'browser-online-deployment.json'), JSON.stringify({ gatewayName: manifest.gatewayName, gatewayVersion, artifactPath: browserArtifact, deployedAt: new Date().toISOString(), buildHash: createHash('sha256').update(await readFile(browserArtifact)).digest('hex'), configHash: createHash('sha256').update(await readFile(manifest.configPath)).digest('hex') }, null, 2))
   }
   console.log(JSON.stringify({ phase: 'deployed', gatewayUrl: manifest.gatewayUrl, manifest: manifestPath }))
 }

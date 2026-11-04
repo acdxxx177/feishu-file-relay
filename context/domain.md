@@ -1,5 +1,7 @@
 # Domain rules
 
+The VPS implementation uses Prisma for typed independent queries and a repository-internal D1 REST batch for atomic state changes. Prisma transactions are explicitly rejected. Public read authorization requires primary proof and is never cached. Job completion and retries are fenced by the claimed attempt and lease. Existing metadata, identifiers, TEXT timestamps and CHECK constraints are preserved; no business-table migration is required for this runtime change.
+
 ## Identities
 
 | Entity | Identity and purpose |
@@ -8,7 +10,7 @@
 | Source attachment | The original `message_id` and matching `file_key` identify the attachment in its conversation. Recall refers to the original message ID. |
 | File record | D1 associates a message with its opaque, randomly generated public ID, filename, verified byte length, version, and status. It holds neither source bytes nor access tokens. |
 | Recall tombstone | `recalled_messages` records the original message ID even when the file record does not yet exist. |
-| Cached chunk | Public file ID, version, and zero-based chunk index identify reusable bytes. Cache presence conveys no download permission. |
+| Cached chunk | Public file ID, version, and a canonical chunk index or exact range identify reusable bytes. Cache presence conveys no download permission. |
 
 ## State transitions
 

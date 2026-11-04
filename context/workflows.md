@@ -1,15 +1,21 @@
 # Relay workflows
 
+## VPS revision (2026-11-04)
+
+The approved VPS revision supersedes Worker-specific mechanics below: Node uses a private in-process range service, explicit length/EOF verification, a socket-destroying response boundary, memory-only tokens, and a non-overlapping persistent-lease scheduler instead of RPC, FixedLengthStream, Cache API, waitUntil and Cron. Prisma queries and direct atomic REST batches share a quota budget; primary metadata is mandatory. Browser ranges default to 16 MiB. See [runtime contract](../src/vps/context/runtime.md) and [database contract](../src/db/context/vps-contract.md). The remaining workflow semantics and historical evidence requirements still apply; production cutover has not occurred.
+
 ## Register and reply
 
 Handle the Feishu URL challenge promptly. Verify callback authenticity and replay protections, decrypt when configured, and accept user p2p messages according to the selected intake policy. Production platform policy delegates user availability to Feishu; legacy allowlist policy requires listed employees. For a file receive event, deduplicate by event ID and associate the matching message ID and file key. Confirm readability and the exact source length before activation. Publish one random public URL in the original conversation. Report a registration failure without presenting a usable link. Keep server-side tokens out of replies, URLs, logs, and cached responses.
 
 ## Download and resume
 
-1. For every admitted public GET or HEAD with a valid ID on `/f/:id`, check D1 on the primary before any cache or origin read. An unknown ID returns 404. A recalled or unavailable ID returns 410 even on HEAD or a warm cache hit. Only active files serve bytes. PRD v1.1 §5.4 requires `Cache-Control: private, no-cache` for successful file responses and `no-store` for errors.
-2. HEAD returns appropriate metadata without a body. Full GET returns 200. A single satisfiable byte range returns 206 with the exact `Content-Range` and response length. An invalid or unsatisfiable range returns 416. The MVP does not serve multipart ranges. Supply the correct content type, attachment filename (including non-ASCII names), length, and `Accept-Ranges: bytes`.
-3. Map the browser's requested bytes onto internal 16 MiB chunks. A resume may start midway through a chunk. Slice boundary chunks to the requested interval, stream in order, and truncate the final chunk at EOF. The client receives one file or byte range, independently of chunk alignment.
-4. Only the Gateway may call the chunk entry. On a miss, request the precise source range, verify status, bounds, and length, and cache a valid chunk as an independent 200 object under its versioned key. Start with the PRD's seven-day cache TTL. Avoid buffering a whole file. Never cache an error or a partial, corrupt chunk.
+1. Every valid-ID public file GET/HEAD performs a D1 first-primary read before cache/source access. Unknown files return 404, deleted/unavailable files return 410, and D1 failures return 503 without reading bytes.
+2. GET /f/:id renders a no-store page without fetching bytes or incrementing statistics. HEAD /f/:id retains the original D1-only binary metadata contract. GET /api/files/:id exposes only public metadata and a relay ETag.
+3. The browser requests /api/files/:id/chunk sequentially with a single Range and exact If-Match. Missing preconditions return 428; mismatches return 412; missing, multipart, invalid or over-16-MiB ranges return 416. No If-Range fallback to a full file occurs here. Every chunk is a new authoritative availability check.
+4. Private ChunkEntry reads the exact range, checks upstream status, Content-Range, optional Content-Length, encoding, byte count and EOF, and applies idle deadlines/cancellation. Canonical 16 MiB keys remain compatible; other ranges have distinct versioned keys. Cache reads require matching generation/length completion markers. The Gateway uses native pipeTo/FixedLengthStream without a JavaScript byte assembly loop.
+5. File System Access writes await backpressure at absolute offsets, rolls failed chunks back, and commits only after verification and close. Blob mode has a hard 20 MiB limit. Cancellation or exhausted retries aborts tentative output. In-session automatic recovery is distinct from restarting after a terminal failure, refresh or browser restart.
+6. GET/HEAD /f/:id/download preserves the old binary Range/If-Range path and its known Free CPU limitation. Page/metadata/chunk responses use no-store. Raw successes retain private,no-cache. Page opens never count; browser offset-zero chunks count after successful forwarding, and repeated zero-offset requests can overcount.
 
 ## Recall and failures
 

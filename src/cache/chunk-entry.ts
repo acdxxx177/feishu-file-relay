@@ -7,7 +7,9 @@ export const CHUNK_SIZE = 16 * 1024 * 1024
 // 只共享完成信号，不跨请求共享 Response/ReadableStream，避免 Workers 的 I/O 所有权错误。
 const inFlight = new Map<string, Promise<void>>()
 
-async function readWithDeadline(reader: ReadableStreamDefaultReader<Uint8Array>, abort: AbortController, milliseconds: number): Promise<ReadableStreamReadResult<Uint8Array>> {
+type BodyReader = Pick<ReadableStreamDefaultReader<Uint8Array>, 'read' | 'cancel'>
+
+async function readWithDeadline(reader: BodyReader, abort: AbortController, milliseconds: number): Promise<ReadableStreamReadResult<Uint8Array>> {
   if (abort.signal.aborted) throw abort.signal.reason
   let timer: ReturnType<typeof setTimeout> | undefined
   let onAbort!: () => void
@@ -23,7 +25,7 @@ async function readWithDeadline(reader: ReadableStreamDefaultReader<Uint8Array>,
   }
 }
 
-export function checkedBody(response: Response, start: number, end: number, total: number, abort: AbortController, ctx: BackgroundContext, idleMilliseconds = 30_000): ReadableStream<Uint8Array> {
+export function checkedBody(response: Response, start: number, end: number, total: number, abort: AbortController, ctx: BackgroundContext, idleMilliseconds = 30_000, readBufferSize = 0): ReadableStream<Uint8Array> {
   const expected = end - start + 1
   const range = response.headers.get('Content-Range')
   const length = response.headers.get('Content-Length')
@@ -34,8 +36,21 @@ export function checkedBody(response: Response, start: number, end: number, tota
     if (response.body) ctx.waitUntil(response.body.cancel().catch(() => {}))
     throw new Error('Invalid upstream range')
   }
-  const reader = response.body.getReader()
   let received = 0
+  let reader: BodyReader
+  if (readBufferSize > 0) {
+    try {
+      const bytes = response.body.getReader({ mode: 'byob' })
+      reader = {
+        read() {
+          // 平台原生聚合小网络帧，减少 JS 校验/缓存循环次数；始终仅持有固定上限缓冲。
+          const length = Math.min(readBufferSize, Math.max(1, expected - received))
+          return bytes.readAtLeast(length, new Uint8Array(length))
+        },
+        cancel: (reason) => bytes.cancel(reason),
+      }
+    } catch { reader = response.body.getReader() }
+  } else reader = response.body.getReader()
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
@@ -151,41 +166,52 @@ async function waitForChunk(running: Promise<void>, signal: AbortSignal): Promis
   finally { signal.removeEventListener('abort', abort) }
 }
 
-async function getChunk(env: Env, ctx: BackgroundContext, file: SourceFile, index: number, abort: AbortController): Promise<Response> {
+async function getChunk(env: Env, ctx: BackgroundContext, file: SourceFile, start: number, end: number, abort: AbortController, cache = true, readBufferSize = 0): Promise<Response> {
   if (abort.signal.aborted) throw abort.signal.reason
-  const start = index * CHUNK_SIZE
-  const end = Math.min(start + CHUNK_SIZE, file.file_size) - 1
-  if (!Number.isSafeInteger(index) || index < 0 || start > end) return new Response(null, { status: 416 })
-  const key = cacheKey(env, file, index)
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start > end || end >= file.file_size || end - start + 1 > CHUNK_SIZE) return new Response(null, { status: 416 })
+  const index = Math.floor(start / CHUNK_SIZE)
+  // 精确范围有自己的键；不能把小范围误当成既有完整 16 MiB 分片。
+  const canonical = start % CHUNK_SIZE === 0 && end === Math.min(start + CHUNK_SIZE, file.file_size) - 1
+  // 绕缓存请求不构造键，也不建立同键合并状态；授权及源字节校验仍走原路径。
+  const key = cache ? canonical ? cacheKey(env, file, index) : `${cacheKey(env, file, index)}/range/${start}-${end}` : ''
   const expected = end - start + 1
-  const hit = await openCached(key, expected)
+  const hit = cache ? await openCached(key, expected) : undefined
   if (hit) {
     console.log(JSON.stringify({ event: 'chunk', file_id: file.id, index, cache: 'HIT', origin_calls: 0, bytes: expected }))
     return hit
   }
-  const running = inFlight.get(key)
+  const running = cache ? inFlight.get(key) : undefined
   if (running) {
     await waitForChunk(running, abort.signal)
     const coalesced = await openCached(key, expected)
     if (coalesced) return coalesced
   }
-  let finish!: () => void
-  const finished = new Promise<void>((resolve) => { finish = resolve })
-  inFlight.set(key, finished)
-  const clear = () => {
-    if (inFlight.get(key) === finished) inFlight.delete(key)
-    finish()
+  let clear: (() => void) | undefined
+  if (cache) {
+    let finish!: () => void
+    const finished = new Promise<void>((resolve) => { finish = resolve })
+    inFlight.set(key, finished)
+    clear = () => {
+      if (inFlight.get(key) === finished) inFlight.delete(key)
+      finish()
+    }
   }
   try {
     const response = await fetchResource(env, file, start, end, abort.signal)
-    const body = checkedBody(response, start, end, file.file_size, abort, ctx, Number(env.UPSTREAM_READ_TIMEOUT_MS) || 30_000)
+    const body = checkedBody(response, start, end, file.file_size, abort, ctx, Number(env.UPSTREAM_READ_TIMEOUT_MS) || 30_000, readBufferSize)
+    if (!cache) {
+      const outgoing = new FixedLengthStream(expected)
+      ctx.waitUntil(body.pipeTo(outgoing.writable).catch(() => { abort.abort() }))
+      console.log(JSON.stringify({ event: 'chunk', file_id: file.id, index, cache: 'BYPASS', origin_calls: 1, bytes: expected }))
+      return new Response(outgoing.readable, { headers: { 'Content-Length': String(expected), 'X-Chunk-Cache': 'BYPASS' } })
+    }
     const ttl = Number(env.CHUNK_CACHE_TTL_SECONDS) || 604800
     const sending = cacheWhileSending(body, key, expected, ttl, ctx)
     ctx.waitUntil(sending.complete.then(clear, clear))
     console.log(JSON.stringify({ event: 'chunk', file_id: file.id, index, cache: 'MISS', origin_calls: 1, bytes: expected }))
     return new Response(sending.body, { headers: { 'Content-Length': String(expected), 'X-Chunk-Cache': 'MISS' } })
   } catch (error) {
-    clear()
+    clear?.()
     return new Response(null, { status: error instanceof UpstreamError && error.permanent ? 410 : 503 })
   }
 }
@@ -194,22 +220,28 @@ export class ChunkRequest extends RpcTarget {
   #env: Env
   #ctx: BackgroundContext
   #file: SourceFile
-  #index: number
+  #start: number
+  #end: number
+  #cache: boolean
+  #readBufferSize: number
   #abort = new AbortController()
   #started = false
 
-  constructor(env: Env, ctx: BackgroundContext, file: SourceFile, index: number) {
+  constructor(env: Env, ctx: BackgroundContext, file: SourceFile, start: number, end: number, cache = true, readBufferSize = 0) {
     super()
     this.#env = env
     this.#ctx = ctx
     this.#file = file
-    this.#index = index
+    this.#start = start
+    this.#end = end
+    this.#cache = cache
+    this.#readBufferSize = readBufferSize
   }
 
   response(): Promise<Response> {
     if (this.#started) throw new Error('Chunk response already consumed')
     this.#started = true
-    return getChunk(this.#env, this.#ctx, this.#file, this.#index, this.#abort)
+    return getChunk(this.#env, this.#ctx, this.#file, this.#start, this.#end, this.#abort, this.#cache, this.#readBufferSize)
   }
 
   cancel(): void { this.#abort.abort(new Error('Client disconnected')) }
@@ -220,6 +252,10 @@ export class ChunkRequest extends RpcTarget {
 export class ChunkEntry extends WorkerEntrypoint<Env> {
   openChunk(file: SourceFile, index: number): ChunkRequest {
     // 先返回可取消的能力句柄，再开始回源；等待响应头时也能立即取消。
-    return new ChunkRequest(this.env, this.ctx, file, index)
+    return new ChunkRequest(this.env, this.ctx, file, index * CHUNK_SIZE, Math.min((index + 1) * CHUNK_SIZE, file.file_size) - 1)
+  }
+
+  openRange(file: SourceFile, start: number, end: number, cache: boolean): ChunkRequest {
+    return new ChunkRequest(this.env, this.ctx, file, start, end, cache, 256 * 1024)
   }
 }
