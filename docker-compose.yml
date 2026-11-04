@@ -1,0 +1,59 @@
+services:
+  relay:
+    image: ${DOCKER_IMAGE:-feishu-file-relay:local}
+    build:
+      context: .
+      target: runtime
+    platform: linux/amd64
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: ${STOP_GRACE_PERIOD:-70s}
+    ports:
+      - "127.0.0.1:${PUBLISHED_PORT:-3000}:${PORT:-3000}"
+    environment:
+      NODE_ENV: production
+      HOST: ${HOST:-0.0.0.0}
+      PORT: ${PORT:-3000}
+      FEISHU_APP_ID: ${FEISHU_APP_ID:-}
+      FEISHU_APP_SECRET: ${FEISHU_APP_SECRET:-}
+      FEISHU_VERIFICATION_TOKEN: ${FEISHU_VERIFICATION_TOKEN:-}
+      FEISHU_ENCRYPT_KEY: ${FEISHU_ENCRYPT_KEY:-}
+      CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
+      CLOUDFLARE_DATABASE_ID: ${CLOUDFLARE_DATABASE_ID:-}
+      CLOUDFLARE_D1_TOKEN: ${CLOUDFLARE_D1_TOKEN:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+      FEISHU_INTAKE_POLICY: ${FEISHU_INTAKE_POLICY:-platform}
+      FEISHU_TRANSPORT: ${FEISHU_TRANSPORT:-real}
+      FEISHU_API_BASE: ${FEISHU_API_BASE:-https://open.feishu.cn}
+      FEISHU_ACCOUNTS_BASE: ${FEISHU_ACCOUNTS_BASE:-https://accounts.feishu.cn}
+      ALLOWED_OPEN_IDS: ${ALLOWED_OPEN_IDS:-}
+      ADMIN_OPEN_IDS: ${ADMIN_OPEN_IDS:-}
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-1073741824}
+      UPSTREAM_READ_TIMEOUT_MS: ${UPSTREAM_READ_TIMEOUT_MS:-30000}
+      WEBHOOK_MAX_SKEW_SECONDS: ${WEBHOOK_MAX_SKEW_SECONDS:-300}
+      D1_REQUEST_BUDGET: ${D1_REQUEST_BUDGET:-900}
+      MAX_CONCURRENT_DOWNLOADS: ${MAX_CONCURRENT_DOWNLOADS:-10}
+      DOWNLOAD_RATE_LIMIT: ${DOWNLOAD_RATE_LIMIT:-60}
+      CHUNK_CACHE_ENABLED: ${CHUNK_CACHE_ENABLED:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-${DOCKER_GATEWAY:-172.30.0.1}}
+      SHUTDOWN_TIMEOUT_MS: ${SHUTDOWN_TIMEOUT_MS:-60000}
+      JOB_POLL_MS: ${JOB_POLL_MS:-15000}
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:' + process.env.PORT + '/health', {signal: AbortSignal.timeout(4000)}).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    networks: [relay]
+
+networks:
+  relay:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${DOCKER_SUBNET:-172.30.0.0/24}
+          gateway: ${DOCKER_GATEWAY:-172.30.0.1}

@@ -11,5 +11,5 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true
   },
-  "include": ["src/vps/**/*.ts", "src/db/repository.ts", "src/db/prisma-*.ts", "src/db/d1-*.ts", "tests/vps/**/*.ts", "prisma.config.ts", "scripts/build-vps.ts", "scripts/db-schema-check.ts", "scripts/db-migrate-diff.ts", "scripts/test-d1-remote.ts"]
+  "include": ["src/vps/**/*.ts", "src/db/repository.ts", "src/db/prisma-*.ts", "src/db/d1-*.ts", "tests/vps/**/*.ts", "tests/docker/**/*.ts", "prisma.config.ts", "scripts/generate-docker-env.ts", "scripts/build-vps.ts", "scripts/db-schema-check.ts", "scripts/db-migrate-diff.ts", "scripts/test-d1-remote.ts"]
 }

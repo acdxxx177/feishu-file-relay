@@ -8,6 +8,7 @@ import type { FeishuClient } from './feishu'
 import { createDownloadHandlers, securityHeaders } from './download'
 import { handleWebhook } from './intake'
 import { createScheduler } from './scheduler'
+import { trustedProxyCheck } from './trusted-proxy'
 
 export function createApplication(config: Config, repository: RelayRepository, feishu: FeishuClient) {
   const scheduler = createScheduler(config, repository, feishu)
@@ -25,6 +26,7 @@ export function createApplication(config: Config, repository: RelayRepository, f
   let readiness: Promise<boolean> | undefined
   let readinessUntil = 0
   const clients = new Map<string, { start: number; count: number }>()
+  const isTrustedProxy = trustedProxyCheck(config.trustedProxyIps)
   const error = (status: number, retry = '10') => new Response(null, { status, headers: { ...Object.fromEntries(securityHeaders()), 'Retry-After': retry } })
   app.use('*', async (c, next) => {
     if (stopping && c.req.path !== '/health') return error(503)
@@ -47,8 +49,7 @@ export function createApplication(config: Config, repository: RelayRepository, f
   app.use('*', async (c, next) => {
     if (!c.req.path.startsWith('/f/') && !c.req.path.startsWith('/api/files/')) return next()
     const remote = c.env?.incoming?.socket.remoteAddress ?? 'local'
-    const loopback = remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1'
-    const forwarded = config.trustProxy && loopback ? c.req.header('X-Real-IP') : undefined
+    const forwarded = config.trustProxy && isTrustedProxy(remote) ? c.req.header('X-Real-IP') : undefined
     const ip = forwarded && isIP(forwarded) ? forwarded : remote
     const now = Date.now()
     for (const [key, value] of clients) if (now - value.start >= 60000) clients.delete(key)

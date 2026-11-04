@@ -1,0 +1,20 @@
+# 采用允许列表，避免任何本地凭据、日志、产物和工具目录进入构建上下文。
+**
+!Dockerfile
+!.dockerignore
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!prisma.config.ts
+!tsconfig.browser.json
+!prisma/
+!prisma/schema.prisma
+!scripts/
+!scripts/build-browser.ts
+!scripts/build-vps.ts
+!src/
+!src/**
+src/generated/
+**/.env*
+**/.dev.vars*
+**/*.log

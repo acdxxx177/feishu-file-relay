@@ -2,6 +2,8 @@
 
 当前默认运行时为 **Node.js 24 + Hono + Prisma + 远程 D1**，飞书是唯一文件内容源。生产域名和数据库保持原样，本次仅交付代码，没有生产部署。旧 Worker 内容在下文保留为历史配置和回滚参考；当前操作以 [VPS 部署与回滚](docs/vps-deployment.md) 为准。
 
+Docker 部署使用根目录 `Dockerfile` 和 `docker-compose.yml`，运行 `pnpm env:docker` 生成未知项为空的环境模板，完整步骤见 [Docker 与 GHCR 部署](docs/docker-deployment.md)。GitHub Actions 自动验证 main/PR，只在版本标签或手动触发时推送 GHCR。
+
 ```sh
 pnpm install --frozen-lockfile
 pnpm typecheck

@@ -1,5 +1,15 @@
 # Project status
 
+## Docker packaging and GHCR workflow (2026-11-04)
+
+Implemented local delivery: a multi-stage Node 24 Debian slim image for Linux AMD64, production dependencies, non-root runtime, allowlisted Docker build context, and a single-service Compose deployment with read-only root filesystem, host-loopback port publication and dedicated bridge networking. All application configuration is injected through environment variables. `pnpm env:docker` writes a blank/default `.env.docker` template without reading existing configuration or process credentials and atomically refuses overwrites; the local ignored template was generated successfully.
+
+Bridge compatibility adds exact `TRUSTED_PROXY_IPS` matching (including IPv4-mapped IPv6) behind the existing `TRUST_PROXY` switch. Compose defaults to trusting only its configured gateway in addition to loopback. Other peers cannot supply rate-limit identity; `/ready` remains loopback-only. Existing deployments without the new list retain loopback-only trust. No schema, file-read authorization, cache or stream contract changed.
+
+The new GitHub Actions workflow validates main/PR/tag/manual events and publishes only valid version tags or manual dispatches to lowercase `ghcr.io/<owner>/<repository>`. Stable versions update latest, prereleases do not, manual runs publish only the full-commit tag. Publication uses GITHUB_TOKEN with packages write limited to the publish job. Action commits were resolved from their official repositories. Base image tags remain mutable; image digests are the content-pinning mechanism. No Git remote is configured locally, and no workflow, image publication, deployment or remote D1 operation was performed.
+
+Verified locally: VPS typecheck/build, 36/36 small tests (including seven new environment/tag/proxy cases), Hono CLI health 200, and 3/3 large integrity tests at 100/500/1024 MiB for full raw, interrupted/resumed raw and assembled browser chunks. The initial template coverage test incorrectly truncated numeric environment names; its matcher was fixed before the final 36/36 pass. An independent read-only review found no blocking issue. Docker CLI/daemon is unavailable here: all three container acceptance cases explicitly skipped, not passed. Linux image build, Compose interpolation/bridge behavior, non-root image startup/assets/shutdown and actual GHCR publication remain CI acceptance items; REQUIRE_DOCKER=1 makes absence of Docker fail CI. Offline smoke does not prove successful remote Prisma/D1 queries or the target Nginx path. See docs/docker-deployment.md and docs/verification-log.md; existing production cutover gates still apply.
+
 ## VPS migration implementation (2026-11-04)
 
 The default build/dev/test path now targets Node.js 24 + Hono on a VPS, with Prisma 7.10.1 and remote D1 metadata. Existing working-tree changes and the Worker implementation/configuration are preserved. No production deployment, DNS change, Cloudflare resource deletion, subscription change, real Feishu registration, or remote D1 mutation occurred during this migration.

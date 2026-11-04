@@ -1,5 +1,7 @@
 # VPS 部署、迁移与回滚
 
+使用 Docker 时请按 [Docker 与 GHCR 部署](docker-deployment.md) 操作；仍须完成本文的生产切换与回滚清单。Docker 桥接模式通过明确的 `TRUSTED_PROXY_IPS` 信任宿主机代理，readiness 在容器内检查。
+
 ## 当前交付边界
 
 应用采用 Node.js 24、Hono、Prisma 7.10.1，VPS 直接请求飞书内容及 Cloudflare D1 REST API。数据库仍是原生产 D1，原有 ID、记录和 `https://dl.sinoballvalve.com/f/<id>` 不变。本次代码交付没有部署生产、修改 DNS 或注册真实文件。

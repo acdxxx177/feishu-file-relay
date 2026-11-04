@@ -8,6 +8,8 @@
     "node": ">=24.0.0"
   },
   "scripts": {
+    "env:docker": "node scripts/generate-docker-env.ts",
+    "test:docker": "node --test --test-concurrency=1 tests/docker/*.test.ts",
     "dev": "pnpm run build:browser && tsx watch --env-file=.env src/vps/main.ts",
     "cf-typegen": "wrangler types",
     "typecheck": "pnpm run db:generate && pnpm run build:browser && tsc -p tsconfig.vps.json && tsc -p tsconfig.browser.json",

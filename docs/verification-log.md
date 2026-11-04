@@ -1,5 +1,17 @@
 # 验证日志
 
+## Docker 与 GHCR 配置验证（2026-11-04）
+
+本次只交付本地文件；没有 Git remote，没有推送代码/版本标签、发布 GHCR 镜像、生产切换、真实飞书登记或远程 D1 操作。
+
+- **通过**：`pnpm typecheck`（包含构建脚本、代理、配置和测试）、`pnpm test` 36/36、`pnpm check:health` 返回 200 / `{"status":"ok"}`。新增七个测试覆盖环境模板独立生成/拒绝覆盖/字段完整、GHCR 版本与手动标签策略、代理来源及 IPv4-mapped IPv6、不同客户限流、伪造/多值头拒绝，以及 readiness 不向可信网关开放。
+- **通过**：`pnpm test:large` 3/3，100/500/1024 MiB 的 raw 完整下载、实际中断续传及浏览器分片组装 SHA-256 均与源一致；哈希分别为 `a14a09201182b6fb326acd2621160dc152597264d3980253e93e580a593e4fef`、`d5628966fba65be6fac98dc2c51c663dc05efb4440f784739038cee33a9de23c`、`88d70583c2ecc851ea3debfbefca7da4b9295959a1412927cb8e60207e2c51c7`。这是本地模拟源证据，不是 Docker 或生产容量证明。
+- **通过**：`pnpm env:docker` 生成忽略入库的 `.env.docker`，未知凭据、域名和镜像地址为空；真实 `.env` 未被读取或改写。独立只读审查未发现阻断问题，Actions SHA 已通过官方仓库标签核验。
+- **修正后通过**：第一轮 35/36，模板字段覆盖测试的正则漏掉数字，将 `CLOUDFLARE_D1_TOKEN` 截断；修正测试后完整回归 36/36。流中断测试中的 `Response stream interrupted` 为预期错误路径，测试本身通过。
+- **跳过**：`pnpm test:docker` 三项全部因本机无 Docker CLI/daemon 跳过，0 项通过；不能把命令退出 0 当作容器验收。CI 使用 `REQUIRE_DOCKER=1`，缺少 Docker 会直接失败。
+- **待 CI/目标环境验证**：Linux AMD64 镜像构建、Compose 特殊字符和进程覆盖、非 root/只读镜像启动与静态资源、SIGTERM 退出、宿主机桥接来源及 readiness 拒绝、GHCR 权限与发布。测试仅用假凭据和断外网容器；不会证明真实远程 D1 查询成功、目标 Nginx 重写头、真实飞书或生产切换。
+- `node:24-bookworm-slim` 是可变基础镜像，重建同一提交可能产生新镜像；提交标签不等于内容不可变，部署固定版本应使用摘要。操作说明见 [Docker 部署](docker-deployment.md)。
+
 ## VPS / Prisma 迁移验证（2026-11-04）
 
 本节为最新迁移证据，下方保留历史 Worker 验证。此次没有生产部署、DNS/套餐修改、真实飞书登记或远程 D1 写入。
