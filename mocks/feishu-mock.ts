@@ -23,7 +23,8 @@ export function createMock() {
   let tokenCalls = 0
   let replyFailures = 0
   let tokenFailures = 0
-  const requestUuids = new Set<string>()
+  const requestUuids = new Map<string, string>()
+  const updates: Array<{ messageId: string; content: string }> = []
   async function handle(request: Request): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === '/oauth/v3/token') {
@@ -106,14 +107,24 @@ export function createMock() {
       if (replyFailures-- > 0) return Response.json({ code: 1 }, { status: 503 })
       const body = await request.json() as Record<string, unknown>
       const uuid = typeof body.uuid === 'string' ? body.uuid : ''
-      if (!uuid || !requestUuids.has(uuid)) replies.push(body)
-      if (uuid) requestUuids.add(uuid)
-      return Response.json({ code: 0, data: { message_id: `reply-${replies.length}` } })
+      const previous = requestUuids.get(uuid)
+      if (previous) return Response.json({ code: 0, data: { message_id: previous } })
+      replies.push(body)
+      const messageId = `reply-${replies.length}`
+      if (uuid) requestUuids.set(uuid, messageId)
+      return Response.json({ code: 0, data: { message_id: messageId } })
+    }
+    const patch = /^\/open-apis\/im\/v1\/messages\/(reply-(\d+))$/.exec(url.pathname)
+    if (patch && request.method === 'PATCH') {
+      if (replies[Number(patch[2]) - 1]?.msg_type !== 'interactive') return Response.json({ code: 230011 }, { status: 400 })
+      const body = await request.json() as { content: string }
+      updates.push({ messageId: patch[1], content: body.content })
+      return Response.json({ code: 0 })
     }
     return new Response(null, { status: 404 })
   }
   return {
-    files, replies, ranges, abortedRanges, handle,
+    files, replies, updates, ranges, abortedRanges, handle,
     get tokenCalls() { return tokenCalls },
     failReplies(count: number) { replyFailures = count },
     failTokens(count: number) { tokenFailures = count },

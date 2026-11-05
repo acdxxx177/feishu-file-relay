@@ -159,6 +159,7 @@ test('Node HTTP platform intake publishes once, counts downloads, lists and enfo
     assert.equal(h.row('file')?.status, 'active')
     await h.post(event('revoke', { text: `撤销 ${file.id}` }))
     await eventually(() => h.row('file')?.status === 'deleted')
+    await eventually(() => h.mock.updates.some((update) => JSON.parse(update.content).header.title.content === '文件分享已撤销'))
     const before = h.mock.ranges.length
     assert.equal((await h.request(`/f/${file.id}/download`)).status, 410)
     assert.equal((await h.request(`/f/${file.id}`, { method: 'HEAD' })).status, 410)
@@ -190,6 +191,87 @@ test('scheduler recovers persisted pending work at startup without another callb
     await eventually(() => h.row('recovery')?.status === 'active')
     await eventually(() => h.mock.replies.length === 1)
     assert.equal(h.mock.ranges[0].range, 'bytes=0-0')
+  } finally { await h.close() }
+})
+
+function cardClick(fileId: string, messageId: string, operator = 'owner', chat = 'chat') {
+  return { schema: '2.0', header: { event_id: 'click-' + fileId, event_type: 'card.action.trigger',
+    create_time: String(Date.now() * 1000), app_id: 'mock-app', token },
+    event: { host: 'im_message', operator: { open_id: operator }, context: { open_message_id: messageId, open_chat_id: chat },
+      action: { tag: 'button', name: 'revoke_share', value: { action: 'revoke_file', file_id: fileId, open_id: 'owner' } } } }
+}
+
+test('encrypted card callback binds the owner, source chat and original card and patches only that card', async () => {
+  const h = await harness({ FEISHU_INTAKE_POLICY: 'allowlist', ALLOWED_OPEN_IDS: 'owner,admin', ADMIN_OPEN_IDS: 'admin' })
+  try {
+    const file = await h.register('first')
+    const sibling = await h.register('second')
+    const messageId = (id: string) => h.db.prepare("SELECT message_id FROM bot_jobs WHERE file_id=? AND state='sent' AND kind='notification'").get(id)?.message_id as string | undefined
+    await eventually(() => Boolean(messageId(file.id) && messageId(sibling.id)))
+    const cardId = messageId(file.id)!
+    const click = cardClick(file.id, cardId)
+    assert.equal(h.mock.replies.length, 2)
+    // 本地只能验证未收到回调时状态不变；取消弹窗是否发送请求须在真实客户端观察。
+    assert.equal(h.row('first')?.status, 'active')
+    const stale = { ...click, header: { ...click.header, create_time: String((Date.now() - 600000) * 1000) } }
+    for (const invalid of [stale, { ...click, header: { ...click.header, app_id: 'wrong' } },
+      { ...click, header: { ...click.header, token: 'wrong' } }]) assert.equal((await h.post(invalid)).status, 401)
+    assert.equal((await h.post(click, { encrypted: true, badSignature: true })).status, 401)
+    assert.equal((await h.post({ ...click, event: { ...click.event, host: 'im_top_notice' } })).status, 400)
+    for (const denied of [cardClick(file.id, cardId, 'admin'), cardClick(file.id, cardId, 'stranger'),
+      cardClick(file.id, cardId, 'owner', 'other-chat'), cardClick(sibling.id, cardId), cardClick(file.id, 'first')]) {
+      assert.equal((await (await h.post(denied)).json()).toast.type, 'error')
+    }
+    assert.equal(h.row('first')?.status, 'active')
+    const results = await Promise.all([h.post(click, { encrypted: true }), h.post(click)])
+    const toasts = await Promise.all(results.map(async (r) => (await r.json()).toast.type))
+    assert.deepEqual(toasts.sort(), ['info', 'success'])
+    assert.equal(h.row('first')?.status, 'deleted')
+    assert.equal(h.row('second')?.status, 'active')
+    await eventually(() => h.mock.updates.length === 1)
+    assert.equal(h.mock.updates[0].messageId, cardId)
+    assert.equal(JSON.parse(h.mock.updates[0].content).header.title.content, '文件分享已撤销')
+    assert.equal(h.mock.replies.length, 2)
+  } finally { await h.close() }
+})
+
+test('slow or uncertain callback commits yield a retryable toast before the platform deadline', async () => {
+  const h = await harness()
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => { release = resolve })
+  try {
+    const file = await h.register('slow')
+    const receipt = () => h.db.prepare("SELECT message_id FROM bot_jobs WHERE file_id=? AND state='sent'").get(file.id)?.message_id as string | undefined
+    await eventually(() => Boolean(receipt()))
+    const click = cardClick(file.id, receipt()!)
+    const revoke = h.repository.revokeCard.bind(h.repository)
+    h.repository.revokeCard = async (...args) => { await gate; return revoke(...args) }
+    const started = Date.now()
+    const pending = await (await h.post(click)).json()
+    assert.equal(pending.toast.type, 'info')
+    assert.match(pending.toast.content, /无法确认/)
+    assert.ok(Date.now() - started < 3000)
+    assert.equal(h.row('slow')?.status, 'active')
+    release()
+    await eventually(() => h.row('slow')?.status === 'deleted')
+    const repeat = await (await h.post(click)).json()
+    assert.equal(repeat.toast.content, '该分享已撤销。')
+    h.repository.revokeCard = async () => { throw new Error('unknown commit') }
+    assert.match((await (await h.post(click)).json()).toast.content, /无法确认/)
+  } finally { release(); await h.close() }
+})
+
+test('a confirmed missing source updates its published card after a real HTTP download attempt', async () => {
+  const h = await harness()
+  try {
+    const file = await h.register('source-lost')
+    await eventually(() => Boolean(h.db.prepare("SELECT message_id FROM bot_jobs WHERE file_id=? AND state='sent'").get(file.id)?.message_id))
+    h.mock.files.delete('source-lost')
+    assert.equal((await h.request(`/f/${file.id}/download`)).status, 410)
+    await eventually(() => h.mock.updates.length === 1)
+    assert.equal(h.row('source-lost')?.status, 'unavailable')
+    assert.equal(JSON.parse(h.mock.updates[0].content).header.title.content, '源文件已失效')
+    assert.equal(h.mock.replies.length, 1)
   } finally { await h.close() }
 })
 

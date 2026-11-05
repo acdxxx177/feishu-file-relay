@@ -6,6 +6,8 @@ The approved VPS revision supersedes Worker-specific mechanics below: Node uses 
 
 ## Register and reply
 
+The VPS sends a dynamically built Simplified Chinese Card 2.0 after activation. A submit button requests native confirmation. The callback authenticates the operator and binds the original chat and bot message before revoking. Source loss, recall and revocation schedule an update to the same card. The separate text command remains available for older clients and expired interactions. The retained Worker publishes text. See the [VPS operating guide](../docs/vps-deployment.md) and [card acceptance steps](../docs/acceptance.md).
+
 Handle the Feishu URL challenge promptly. Verify callback authenticity and replay protections, decrypt when configured, and accept user p2p messages according to the selected intake policy. Production platform policy delegates user availability to Feishu; legacy allowlist policy requires listed employees. For a file receive event, deduplicate by event ID and associate the matching message ID and file key. Confirm readability and the exact source length before activation. Publish one random public URL in the original conversation. Report a registration failure without presenting a usable link. Keep server-side tokens out of replies, URLs, logs, and cached responses.
 
 ## Download and resume

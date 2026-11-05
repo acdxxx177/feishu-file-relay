@@ -1,5 +1,36 @@
 # 验证日志
 
+## VPS 飞书文件分享卡片（2026-11-06）
+
+PRD F03、F06、F08、F09、§8.4。本地使用 Node、SQLite 模拟 D1 REST 事务和隔离飞书服务。Worker 使用原有本地 workerd 验证链路。完整[示例 JSON](file-card-example.json)由实际构建函数生成，并与测试输出逐字段比对。
+
+| 本地命令 | 实际结果 |
+| --- | --- |
+| `pnpm typecheck`、`pnpm typecheck:worker` | 均通过 |
+| `pnpm test`、`pnpm test:large` | VPS 65/65、3/3 通过 |
+| `pnpm test:worker`、`pnpm test:worker:large` | Worker 35/35、8/8 通过 |
+| `pnpm check:health` | HTTP 200，响应 `{"status":"ok"}` |
+
+以上测试零跳过。两个运行时完整下载与中断续传的 SHA-256 均与隔离源一致。
+
+| 大小 | SHA-256 |
+| --- | --- |
+| 100 MiB | `a14a09201182b6fb326acd2621160dc152597264d3980253e93e580a593e4fef` |
+| 500 MiB | `d5628966fba65be6fac98dc2c51c663dc05efb4440f784739038cee33a9de23c` |
+| 1024 MiB | `88d70583c2ecc851ea3debfbefca7da4b9295959a1412927cb8e60207e2c51c7` |
+
+已覆盖更新过期时热缓存 GET/HEAD 返回 410、未知提交时提示稍后重试、收到旧回执时补更新，以及同一上传者用另一张卡片的回调无法撤销目标文件。只有明确未投递的卡片允许切换到文字兜底；结果不明时使用原 UUID 和原内容在安全窗口内追回回执。
+
+变更文件按职责归档：
+
+- VPS 展示与投递：`src/vps/cards/file-card.ts`、`src/vps/card-delivery.ts`、`src/vps/feishu.ts`。
+- 回调、鉴权与命令：`src/vps/intake.ts`、`src/vps/webhook-auth.ts`、`src/vps/commands.ts`。
+- 持久化：`src/db/repository.ts`、`src/db/prisma-repository.ts`。沿用原库表。
+- 本地测试：`mocks/feishu-mock.ts`，以及 `tests/vps/` 下的 `card-delivery.test.ts`、`database-cards.test.ts`、`database-fixture.ts`、`database.test.ts`、`feishu.test.ts`、`file-card.test.ts`、`runtime.test.ts`。
+- 说明及示例：`PRD.md`、`project-status.md`、`context/workflows.md`、`src/db/context/vps-contract.md`、`src/vps/context/runtime.md`、`docs/acceptance.md`、`docs/vps-deployment.md`、`docs/file-card-example.json` 和本日志。
+
+待获准后按[客户端验收步骤](acceptance.md)验证取消无回调、实际请求耗时、完整 URL 选中、卡片就地刷新，以及重复 UUID 能否取回原消息 ID。未使用远程 D1 或真实文件执行这些操作。
+
 ## 首个 GHCR 镜像发布（2026-11-04）
 
 用户授权创建 tag 并发布镜像后，将附注标签 `v1.0.0` 推送到已通过 CI 的提交 `2c3d2c98d7bf72820fdce5980f68c6c19c46a97f`。未使用随后带 `[skip ci]` 的纯文档提交作为发布目标。

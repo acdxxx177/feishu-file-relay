@@ -4,6 +4,8 @@ The Node entry is `main.ts`; application creation has no startup side effects. P
 
 Every public file read is authorized through `getDownloadFile`; control jobs use `getFile`, preserving reserved API capacity. Webhooks persist before acknowledgement. Tasks and notifications stay in D1; process memory is never the durable queue. Job completion is fenced by attempt and lease. Startup scans and non-overlapping polling recover work after crashes.
 
+Card interactions at the same webhook use Feishu's signed modern callback envelope, including microsecond creation timestamps. Application processing reserves 2.4 seconds from entry for a confirmed D1 result. On a timeout it returns an uncertain-result toast and continues tracking the operation. The atomic D1 batch schedules the original-message update. See the [repository contract](../../db/context/vps-contract.md) for file and message ownership.
+
 Sockets are observed independently of request-body completion. `safeNodeResponse` destroys a failing binary response before the Node adapter can append an error body. Length and EOF checks retain the final byte buffer until the upstream stream is verified. Client abort, source deadlines and shutdown cancel upstream work. Backpressure is bounded; source files are never persisted.
 
 The optional cache is bounded at 64 MiB, five minutes, one completed chunk per file, and excludes complete small files. D1 is checked before every cache hit. Cache state grants no permission. The production proxy must disable cache, response buffering, temporary files and compression.

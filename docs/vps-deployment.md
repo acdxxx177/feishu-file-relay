@@ -8,6 +8,28 @@
 
 旧 Worker 入口、配置及脚本保留作恢复材料；默认 `build/dev/test` 已改为 VPS，旧验证使用 `*:worker`。`pnpm deploy` 故意拒绝自动发布，生产变更必须按下方清单授权执行。
 
+## 飞书文件分享卡片
+
+VPS 在运行时用 TypeScript 生成卡片 JSON 2.0，通过发送消息接口的 `msg_type: "interactive"` 和序列化的 `content` 投递到原单聊。无需创建、发布卡片模板或开通 CardKit 实体接口。完整的[生成示例](file-card-example.json)使用示例域名。[飞书卡片结构](https://open.feishu.cn/document/feishu-cards/card-json-v2-structure)
+
+1. 在获准使用的测试应用启用机器人。确认已有应用权限 `im:message:send_as_bot`，它可用于发送并更新本应用自己的卡片。继续保留原有接收单聊消息、读取文件及撤回事件设置。无需申请读取员工 user_id 的权限，鉴权使用应用范围内的 open_id。[发送消息](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/create) · [更新消息卡片](https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/patch)
+2. 在**事件与回调 → 回调配置**选择将回调发送至开发者服务器，将地址设为 `https://<测试域名>/webhook/feishu`，完成网址验证，添加**卡片回传交互**（`card.action.trigger`）。事件订阅和回调订阅是两个配置项。按平台要求使测试版本配置生效。加密策略中的 Encrypt Key 和 Verification Token 须与 VPS 配置一致。[接收回调](https://open.feishu.cn/document/event-subscription-guide/callback-subscription/receive-and-handle-callbacks)
+3. 服务使用原始请求体和飞书请求头验证签名、解密加密数据，并校验 Token、App ID 与时间窗口。撤销事务逐项比对回调中的操作人、聊天、机器人卡片消息 ID 和 D1 中的文件。确认弹窗由飞书客户端提供，只有确认才会提交表单。卡片转发件关闭回传交互。[按钮与确认弹窗](https://open.feishu.cn/document/feishu-cards/card-json-v2-components/interactive-components/button) · [回调字段](https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-callback-communication)
+
+**运维与恢复。** 文件的 `files.message_id` 用于源附件。新 VPS 发布任务 `active:card:<文件ID>` 的 `bot_jobs.message_id` 保存飞书返回的卡片消息 ID。无需迁移或回填。撤销、撤回、源文件无法读取均先写入 D1，再由持久任务更新原卡片。过期或已被撤回的卡片可能仍显示旧内容，但 D1 会拦截后续下载。可根据文件 ID、任务状态和脱敏的 `card_delivery_failed`、`bot_reply_failed` 日志定位失败。
+
+飞书明确拒绝卡片格式时，服务可用同一公开链接发送中文文本。遇到响应丢失、回执缺少消息 ID 等结果不明的情况，只在一小时去重窗口内用原 UUID 重试。超过安全窗口后停止自动投递；员工可发送「我的链接」找回有效地址。客户端低于 7.20 时显示升级提示。卡片发出 14 天后不能更新，30 天后不能再提交交互；此时可发送「撤销 <链接>」或撤回源消息。[交互与更新时限](https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/handle-card-callbacks)
+
+**回滚至旧运行时前**，先暂停新事件及卡片操作入口，等待 VPS 的发布、文字兜底和卡片更新任务完成，检查下列只读查询返回零行后再启用旧 Worker 的事件路由和 Cron。若仍有任务，保留 VPS 处理器继续恢复，避免旧 Worker 将这些任务作为普通文本消费。切换期间已有卡片可使用文字撤销命令。
+
+```sql
+SELECT id, state, attempts FROM bot_jobs
+WHERE state = 'pending' AND
+  (id LIKE 'active:card:%' OR id LIKE 'card:%' OR id LIKE 'fallback:%');
+```
+
+飞书仅保证相同 UUID 在一小时内最多成功发送一次。重试是否会返回原卡片的消息 ID 需要在获准的测试应用验证。若未获得可确认的回执，查看发布任务和脱敏日志；不要手动重新登记同一文件。
+
 ## 本地构建和检查
 
 ```sh

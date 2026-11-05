@@ -18,7 +18,8 @@ async function equal(left: string, right: string): Promise<boolean> {
 function recent(value: unknown, skew: number): boolean {
   if (typeof value !== 'string' || !/^\d{10,16}$/.test(value)) return false
   const number = Number(value)
-  const milliseconds = number > 1e12 ? number : number * 1000
+  // 卡片回调使用微秒，普通事件及签名头仍可能使用毫秒或秒。
+  const milliseconds = value.length === 16 ? Math.floor(number / 1000) : number > 1e12 ? number : number * 1000
   return Number.isSafeInteger(milliseconds) && Math.abs(Date.now() - milliseconds) <= skew * 1000
 }
 

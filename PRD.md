@@ -328,6 +328,10 @@ Content-Type: application/json
 
 ### 8.4 机器人回复
 
+VPS 的 F03 成功通知使用动态生成的飞书 Card 2.0。卡片展示完整公开链接和分享提示，员工可打开链接，也可通过原生确认弹窗撤销分享。服务核对上传者和对应卡片后，在 D1 提交撤销，再更新原卡片。原文件消息撤回或源文件失效时也更新同一张卡片。详见[卡片示例](docs/file-card-example.json)和[VPS 配置说明](docs/vps-deployment.md)。
+
+下例为旧 Worker 的文字回复格式；VPS 在飞书明确拒绝卡片格式时也支持文字兜底。
+
 ```text
 文件已发布：Product-Manual.zip（512 MB）
 下载地址：https://dl.example.com/f/<22 位 ID>

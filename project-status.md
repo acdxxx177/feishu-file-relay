@@ -1,5 +1,13 @@
 # Project status
 
+## VPS Feishu Card 2.0 notifications (2026-11-06)
+
+PRD F03/F06/F08/F09 and §8.4. The VPS now publishes a dynamically generated Chinese card with the full URL, native submit confirmation and an uploader-only revoke callback. The original bot message is updated after D1 commits revocation, recall or source loss. The permanent publication job stores the bot message ID separately from the source attachment. Historical notifications and the retained Worker use text. No new dependency, migration, card template or permission beyond the documented bot scope is required.
+
+Local results: VPS typecheck, 65/65 regular tests, 3/3 large tests and HTTP health 200. Worker typecheck, 35/35 regular tests and 8/8 large tests passed. Both runtimes matched full and resumed SHA-256 at 100, 500 and 1024 MiB. Coverage includes signed microsecond callbacks, sibling cards and legacy admins, unknown commits, publish/recall races, mutual exclusion of terminal patches, permanent and transient API failures, and warm-cache denial. See the [verification log](docs/verification-log.md) and [generated payload](docs/file-card-example.json).
+
+Remaining acceptance requires a separately authorized Feishu test app and target D1: desktop/mobile selection and native Cancel, confirmed callback latency and identity, card refresh, and the message ID Feishu returns after retrying an accepted request with a lost response. Production configuration, real files and deployment were outside local testing.
+
 ## Multilingual public download page (2026-11-06)
 
 PRD F04/F05/F09/F10/F11. The VPS and retained Worker render the same file detail and unavailable pages in English, Spanish, Hindi and Simplified Chinese. The first HTML uses the saved preference and weighted Accept-Language. The controller follows browser language order in Automatic mode. Unsupported choices fall back to English. A host-only preference cookie is scoped to /f/ for one year. Rendering an error for a denied page preserves its status and Retry-After. Opening the page or changing languages does not read file bytes or increment download counts.

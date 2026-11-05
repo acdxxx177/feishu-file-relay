@@ -26,6 +26,7 @@ export async function executeCommand(config: Config, repository: RelayRepository
   if (!file) return '未找到该链接。'
   if (!canRevoke(config, file.uploader_open_id, job.uploader_open_id)) return config.FEISHU_INTAKE_POLICY === 'platform' ? '无权撤销：仅上传者本人可以撤销。' : '无权撤销：仅上传者本人或管理员可以撤销。'
   if (file.status === 'deleted') return '该链接已失效。'
-  await repository.revokeFile(id, job.uploader_open_id, config.FEISHU_INTAKE_POLICY === 'allowlist' && canRevoke(config, '__other__', job.uploader_open_id))
+  const revoked = await repository.revokeFile(id, job.uploader_open_id, config.FEISHU_INTAKE_POLICY === 'allowlist' && canRevoke(config, '__other__', job.uploader_open_id))
+  if (!revoked) return '该链接已失效。'
   return `已撤销：${file.file_name}。新的下载请求将返回 410。`
 }

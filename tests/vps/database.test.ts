@@ -59,7 +59,11 @@ test('atomic batch rolls back failed statements and preserves changes() outbox c
     await f.repository.finishValidation(claimed, 100, null, 'published')
     assert.equal(await f.repository.markUnavailable(file.id), true)
     assert.equal(await f.repository.markUnavailable(file.id), false)
-    assert.equal((await f.repository.dueJobs()).length, 2)
+    const jobs = await f.repository.dueJobs()
+    assert.deepEqual(jobs.map(job => job.id), [`active:card:${file.id}`])
+    // 发布仍待确认，必须先分清有没有卡片，才能决定更新卡片还是发送失效文字。
+    await f.repository.finishJob((await f.repository.claimJob(jobs[0].id))!)
+    assert.deepEqual((await f.repository.dueJobs()).map(job => job.id), [`unavailable:${file.id}`])
   } finally { await f.repository.close(); f.db.close() }
 })
 

@@ -1,0 +1,123 @@
+{
+  "schema": "2.0",
+  "config": {
+    "update_multi": true,
+    "enable_forward_interaction": false
+  },
+  "header": {
+    "template": "green",
+    "title": {
+      "tag": "plain_text",
+      "content": "文件发布成功"
+    },
+    "subtitle": {
+      "tag": "plain_text",
+      "content": "分享中"
+    }
+  },
+  "body": {
+    "elements": [
+      {
+        "tag": "div",
+        "text": {
+          "tag": "plain_text",
+          "content": "📄 API 6D QSL-3G的试压标准.pdf"
+        }
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "plain_text",
+          "content": "文件大小：0.47 MiB"
+        }
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "plain_text",
+          "content": "文件类型：application/pdf"
+        }
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "plain_text",
+          "content": "https://dl.example.com/f/ibQS5eskUbtPAIqXTRVite"
+        }
+      },
+      {
+        "tag": "button",
+        "text": {
+          "tag": "plain_text",
+          "content": "打开下载链接"
+        },
+        "type": "primary",
+        "behaviors": [
+          {
+            "type": "open_url",
+            "default_url": "https://dl.example.com/f/ibQS5eskUbtPAIqXTRVite"
+          }
+        ]
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "plain_text",
+          "content": "⚠️ 此链接公开，任何持有链接的人均可下载。请仅分享允许对外发送的文件。"
+        }
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "plain_text",
+          "content": "文件可用性取决于飞书源文件，不保证永久有效。"
+        }
+      },
+      {
+        "tag": "div",
+        "text": {
+          "tag": "plain_text",
+          "content": "也可撤回原文件消息，或发送「撤销 <链接>」。"
+        }
+      },
+      {
+        "tag": "hr"
+      },
+      {
+        "tag": "form",
+        "name": "revoke_form",
+        "elements": [
+          {
+            "tag": "button",
+            "name": "revoke_share",
+            "type": "danger",
+            "form_action_type": "submit",
+            "text": {
+              "tag": "plain_text",
+              "content": "撤销分享"
+            },
+            "confirm": {
+              "title": {
+                "tag": "plain_text",
+                "content": "确认撤销文件分享？"
+              },
+              "text": {
+                "tag": "plain_text",
+                "content": "撤销后，客户将无法继续通过此链接发起下载。该操作不可恢复。"
+              }
+            },
+            "behaviors": [
+              {
+                "type": "callback",
+                "value": {
+                  "action": "revoke_file",
+                  "file_id": "ibQS5eskUbtPAIqXTRVite"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

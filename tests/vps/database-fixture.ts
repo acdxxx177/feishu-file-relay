@@ -32,7 +32,7 @@ export function databaseFixture() {
     }
   }
   const options = { accountId: 'test', databaseId: 'test', token: 'fake', fetch: mockFetch, budget: 10000 }
-  return { db, options, repository: createRemoteRepository(options), calls: () => calls, setPrimary: (value: boolean) => { primary = value }, loseReply: () => { loseReply = true } }
+  return { db, options, repository: createRemoteRepository(options), calls: () => calls, setPrimary: (value: boolean) => { primary = value }, loseReply: (value = true) => { loseReply = value } }
 }
 
 
