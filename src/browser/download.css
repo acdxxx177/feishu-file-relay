@@ -1,2 +1,65 @@
-:root{color-scheme:light;--ground:#f3f5f6;--surface:#fff;--ink:#172a35;--accent:#075c70;--error:#a21b27;font-family:system-ui,"Microsoft YaHei",sans-serif;color:var(--ink);background:var(--ground);scrollbar-color:#74858e var(--ground)}
-*{box-sizing:border-box}body{margin:0}main{max-width:760px;margin:8vh auto;padding:32px}h1{font-size:clamp(26px,5vw,32px);margin:0 0 32px;line-height:1.15}section{background:var(--surface);padding:28px;margin:0 0 20px}p{font-size:16px;line-height:1.65;margin:0 0 16px}#filename{font-size:24px;font-weight:650;overflow-wrap:anywhere}#filesize,footer{color:#425966}footer{font-size:14px;line-height:1.6}progress{display:block;width:100%;height:18px;accent-color:var(--accent);margin:24px 0 12px}#amount{font-variant-numeric:tabular-nums}#status{min-height:3.3em}.actions{display:flex;flex-wrap:wrap;gap:12px}button,#save{border:0;border-radius:0;background:#e3eaed;color:var(--ink);font:inherit;min-height:48px;padding:12px 20px;cursor:pointer;text-decoration:none}#download,#save{background:var(--accent);color:white}button:hover:not(:disabled),#save:hover{filter:brightness(.92)}button:active:not(:disabled){transform:translateY(1px)}button:focus-visible,a:focus-visible{outline:3px solid #137a93;outline-offset:4px}button:disabled{opacity:.5;cursor:default}#error{color:var(--error);min-height:1.65em;margin:20px 0 0;overflow-wrap:anywhere}[hidden]{display:none!important}@media(max-width:480px){main{padding:20px;margin:24px auto}section{padding:20px}#filename{font-size:20px}.actions>*{flex:1 1 auto}}@media(prefers-reduced-motion:reduce){button:active:not(:disabled){transform:none}}@media(forced-colors:active){progress,button{forced-color-adjust:auto}}
+:root {
+  color-scheme: light;
+  --ground: #f3f5f6;
+  --surface: #fff;
+  --ink: #172a35;
+  --muted: #425966;
+  --line: #d6dfe2;
+  --accent: #075c70;
+  --error: #a21b27;
+  font: 100%/1.55 system-ui, "Nirmala UI", "Microsoft YaHei", sans-serif;
+  background: var(--ground);
+  color: var(--ink);
+}
+* { box-sizing: border-box }
+body, h1, h2, p { margin: 0 }
+main { width: min(100% - 40px, 48rem); margin: clamp(2rem, 11vh, 7rem) auto 2.5rem }
+.page-heading, .language, .file-heading, .figures, .actions { display: flex; align-items: center }
+.page-heading { flex-wrap: wrap; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem }
+h1 { font-size: clamp(1.5rem, 4vw, 2rem); line-height: 1.25; font-weight: 650 }
+.language { gap: .625rem; color: var(--muted); font-size: .9375rem }
+select, button, #save { font: inherit; color: var(--ink); border-radius: 0; min-height: 48px }
+select { background: var(--surface); border: 1px solid #84949b; padding: .5rem .6rem; max-width: 100% }
+.sheet { background: var(--surface); border: 1px solid var(--line); padding: clamp(1.25rem, 5vw, 2.5rem) }
+.file-heading { align-items: flex-start; gap: 1.125rem; padding-bottom: 1.625rem }
+.document { flex: none; width: 2rem; height: 2.5rem; margin-top: .125rem; color: var(--muted) }
+.file-heading div { min-width: 0 }
+h2 { font-size: clamp(1.35rem, 3.25vw, 1.875rem); line-height: 1.35; font-weight: 600; overflow-wrap: anywhere }
+#filesize, #mode, #feedback, #amount, .unavailable p { color: var(--muted) }
+#filesize { margin-top: .375rem; font-variant-numeric: tabular-nums }
+.transfer { border-top: 1px solid var(--line); padding-top: 1.5rem }
+#status { font-weight: 600; font-size: 1.125rem }
+#mode:not(:empty), #error:not(:empty), .unavailable p { margin-top: .5rem }
+#status:empty + #meter + #mode { margin-top: 0 }
+#meter { margin: 1rem 0 }
+.figures { justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: .25rem 1rem; font-variant-numeric: tabular-nums }
+#percent { font-size: 1.5rem; font-weight: 600 }
+#amount { overflow-wrap: anywhere }
+progress { appearance: none; width: 100%; height: .5rem; display: block; margin-top: .375rem; border: 0; background: #dce4e7; color: var(--accent); accent-color: var(--accent) }
+progress::-webkit-progress-bar { background: #dce4e7 }
+progress::-webkit-progress-value { background: var(--accent) }
+progress::-moz-progress-bar { background: var(--accent) }
+.actions { flex-wrap: wrap; gap: .625rem; margin-top: 1.5rem }
+button, #save { display: inline-flex; align-items: center; justify-content: center; max-width: 100%; padding: .65rem 1.25rem; border: 1px solid var(--line); background: var(--surface); text-decoration: none; text-align: center; cursor: pointer; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere }
+.primary, #save { background: var(--accent); color: #fff; border-color: var(--accent) }
+button:hover:enabled, #save:hover { border-color: var(--ink) }
+.primary:hover:enabled, #save:hover { background: #06495a }
+:focus-visible { outline: 3px solid #137a93; outline-offset: 3px }
+button:disabled { opacity: .55; cursor: default }
+#error { color: var(--error) }
+#feedback:not(:empty), noscript p { margin-top: 1rem }
+[hidden] { display: none !important }
+@media (max-width: 32rem) {
+  main { width: calc(100% - 32px); margin-top: 1.5rem }
+  .page-heading { align-items: center; gap: .625rem; margin-bottom: 1rem }
+  .language { flex-wrap: wrap }
+  .file-heading { gap: .75rem }
+  .document { width: 1.625rem; height: 2rem }
+}
+@media (max-width: 26rem) {
+  .actions > * { width: 100% }
+}
+@media (forced-colors: active) {
+  progress { appearance: auto }
+  button, #save { border: 1px solid ButtonText }
+}

@@ -5,7 +5,8 @@ import { browserScript, browserCss } from '../../.local/browser/assets'
 import type { Config } from './config'
 import type { RelayRepository } from '../db/repository'
 import type { FeishuClient } from './feishu'
-import { createDownloadHandlers, securityHeaders } from './download'
+import { createDownloadHandlers } from './download'
+import { presentPageError, securityHeaders } from '../lib/download-page-response'
 import { handleWebhook } from './intake'
 import { createScheduler } from './scheduler'
 import { trustedProxyCheck } from './trusted-proxy'
@@ -29,7 +30,7 @@ export function createApplication(config: Config, repository: RelayRepository, f
   const isTrustedProxy = trustedProxyCheck(config.trustedProxyIps)
   const error = (status: number, retry = '10') => new Response(null, { status, headers: { ...Object.fromEntries(securityHeaders()), 'Retry-After': retry } })
   app.use('*', async (c, next) => {
-    if (stopping && c.req.path !== '/health') return error(503)
+    if (stopping && c.req.path !== '/health') return presentPageError(c.req.raw, error(503))
     await next()
   })
   app.get('/health', (c) => c.json({ status: 'ok' }))
@@ -54,9 +55,9 @@ export function createApplication(config: Config, repository: RelayRepository, f
     const now = Date.now()
     for (const [key, value] of clients) if (now - value.start >= 60000) clients.delete(key)
     const client = clients.get(ip) ?? { start: now, count: 0 }
-    if (!clients.has(ip) && clients.size >= 10000) return error(429, '60')
+    if (!clients.has(ip) && clients.size >= 10000) return presentPageError(c.req.raw, error(429, '60'))
     clients.set(ip, client)
-    if (++client.count > config.rateLimit) return error(429, '60')
+    if (++client.count > config.rateLimit) return presentPageError(c.req.raw, error(429, '60'))
     const streaming = c.req.method === 'GET' && (c.req.path.endsWith('/download') || c.req.path.endsWith('/chunk'))
     if (!streaming) return next()
     if (active >= config.maxDownloads) return error(503)
@@ -87,6 +88,6 @@ export function createApplication(config: Config, repository: RelayRepository, f
   app.on(['GET', 'HEAD'], '/api/files/:id/chunk', (c) => downloads.chunk(c.req.raw, c.req.param('id')))
   app.get('/api/files/:id', (c) => downloads.page(c.req.raw, c.req.param('id'), true))
   app.notFound(() => new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } }))
-  app.onError(() => { console.error(JSON.stringify({ event: 'request_failed' })); return error(503) })
+  app.onError((_failure, c) => { console.error(JSON.stringify({ event: 'request_failed' })); return presentPageError(c.req.raw, error(503)) })
   return { app, scheduler, stop() { stopping = true; scheduler.stop() }, get activeDownloads() { return active } }
 }

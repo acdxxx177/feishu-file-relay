@@ -4,7 +4,7 @@ import { countDownload } from '../db/files'
 import { authorizeFile, sourceUnavailable, type DownloadContext } from '../lib/file-access'
 import { fileHeaders, publicError } from '../lib/headers'
 import { parseRange } from '../lib/http-range'
-import { renderDownloadPage } from '../browser/page'
+import { downloadPageResponse, securityHeaders } from '../lib/download-page-response'
 
 const blobLimit = 20 * 1024 * 1024
 
@@ -17,23 +17,11 @@ export async function handleFilePage(request: Request, env: Env, id: string, met
   const file = await authorizeFile(env, id)
   if (file instanceof Response) {
     if (metadata) return file
-    return new Response(renderDownloadPage(null, file.status), { status: file.status, headers: pageHeaders() })
+    return downloadPageResponse(request, null, file.status, file.headers.get('Retry-After'))
   }
   const publicFile = { id: file.id, name: file.file_name, size: file.file_size!, status: 'active', etag: fileHeaders(file).get('ETag')!, chunkSize: recommendedChunkSize(env), blobLimit }
   if (metadata) return Response.json(publicFile, { headers: securityHeaders() })
-  return new Response(renderDownloadPage(publicFile), { headers: pageHeaders() })
-}
-
-export function securityHeaders(): Headers {
-  return new Headers({ 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow', 'Referrer-Policy': 'no-referrer' })
-}
-
-function pageHeaders(): Headers {
-  const headers = securityHeaders()
-  headers.set('Content-Type', 'text/html; charset=utf-8')
-  headers.set('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
-  headers.set('X-Frame-Options', 'DENY')
-  return headers
+  return downloadPageResponse(request, publicFile)
 }
 
 export async function handleBrowserChunk(request: Request, env: Env, ctx: DownloadContext, id: string): Promise<Response> {

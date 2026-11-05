@@ -10,7 +10,7 @@
     "types": [
       "./worker-configuration.d.ts"
     ],
-    "strict": true,
+    "strict": true, "allowImportingTsExtensions": true,
     "noEmit": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
@@ -22,7 +22,7 @@
     "worker-configuration.d.ts"
   ],
   "exclude": [
-    "src/browser/download-controller.ts",
+    "src/browser/download-controller.ts", "src/browser/download-ui.ts",
     "src/vps",
     "src/generated",
     "src/db/repository.ts",

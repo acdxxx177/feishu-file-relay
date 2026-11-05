@@ -103,6 +103,36 @@ test('readiness burst coalesces health I/O, caches failure and denies non-loopba
   } finally { await h.close() }
 })
 
+test('public page localizes early errors without changing HTTP or admitting file transfers', async () => {
+  const h = await harness({ rateLimit: 1 })
+  try {
+    const path = '/f/' + 'R'.repeat(22)
+    const headers = { 'Accept-Language': 'fr, es-MX;q=0.9, en;q=0.5' }
+    const missing = await h.request(path, { headers })
+    assert.equal(missing.status, 404)
+    assert.match(await missing.text(), /<html lang="es">/)
+
+    const limited = await h.request(path, { headers })
+    assert.equal(limited.status, 429)
+    assert.equal(limited.headers.get('retry-after'), '60')
+    assert.equal(limited.headers.get('cache-control'), 'no-store')
+    assert.match(limited.headers.get('content-security-policy')!, /script-src 'self'/)
+    assert.match(await limited.text(), /data-text="rateLimited"/)
+    for (const [route, method] of [[path, 'HEAD'], [path + '/download', 'GET'], ['/api/files/' + 'R'.repeat(22), 'GET']]) {
+      const binary = await h.request(route, { method, headers })
+      assert.equal(binary.status, 429)
+      assert.equal(await binary.text(), '')
+    }
+
+    h.runtime.application.stop()
+    const stopping = await h.request(path, { headers: { 'Accept-Language': 'hi-IN' } })
+    assert.equal(stopping.status, 503)
+    assert.equal(stopping.headers.get('retry-after'), '10')
+    assert.match(await stopping.text(), /<html lang="hi">/)
+    assert.equal(h.mock.ranges.length, 0)
+  } finally { await h.close() }
+})
+
 test('Node HTTP platform intake publishes once, counts downloads, lists and enforces uploader-only revoke', async () => {
   const h = await harness()
   try {
@@ -112,6 +142,10 @@ test('Node HTTP platform intake publishes once, counts downloads, lists and enfo
     await delay(100)
     assert.equal(h.mock.replies.length, 1)
     const sourceBefore = h.mock.ranges.length
+    const page = await h.request(`/f/${file.id}`, { headers: { 'Accept-Language': 'en', Cookie: 'relay_language=zh-CN' } })
+    assert.equal(page.status, 200)
+    assert.match(await page.text(), /<html lang="zh-CN">/)
+    assert.equal(h.row('file')?.download_count, 0)
     assert.equal((await h.request(`/f/${file.id}`, { method: 'HEAD' })).status, 200)
     assert.equal(h.mock.ranges.length, sourceBefore)
     const download = await h.request(`/f/${file.id}/download`)

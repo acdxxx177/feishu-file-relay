@@ -4,19 +4,20 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { setup, register, recall, eventually, digest } from './helpers.ts'
 import { createHash } from 'node:crypto'
 import { bytesAt } from '../mocks/feishu-mock.ts'
-import { createBlobSink, downloadChunks, retryAfterMilliseconds, type DownloadMetadata } from '../src/browser/download-controller.ts'
+import { createBlobSink, downloadChunks, DownloadError, retryAfterMilliseconds, type DownloadMetadata } from '../src/browser/download-controller.ts'
 
 test('下载页无回源/统计，公开元数据安全，分片精确读取和撤回门禁', { timeout: 60000 }, async (t) => {
   const h = await setup()
   t.after(() => h.mf.dispose())
   const file = await register(h, 'page-file', 20 * 1024 * 1024)
   const calls = h.mock.ranges.length
-  const page = await h.request(`/f/${file.id}`)
+  const page = await h.request(`/f/${file.id}`, { headers: { 'Accept-Language': 'fr, es-ES;q=0.8' } })
   assert.equal(page.status, 200)
   assert.match(page.headers.get('content-type')!, /text\/html/)
   assert.equal(page.headers.get('cache-control'), 'no-store')
   assert.match(page.headers.get('content-security-policy')!, /frame-ancestors 'none'/)
   const html = await page.text()
+  assert.match(html, /<html lang="es">/)
   assert.ok(html.includes('&lt;手册&gt;'))
   for (const secret of ['file_key', 'message_id', 'mock-tenant-access-token', 'mock-secret']) assert.ok(!html.includes(secret))
   const metadata = await (await h.request(`/api/files/${file.id}`)).json() as DownloadMetadata
@@ -46,11 +47,38 @@ test('下载页无回源/统计，公开元数据安全，分片精确读取和�
   assert.equal((await digest(repeat)).sha256, expected)
   await h.post(recall('page-file'))
   for (const route of [`/f/${file.id}`, `/api/files/${file.id}`, path]) {
-    const response = await h.request(route, { headers })
+    const response = await h.request(route, { headers: { ...headers, 'Accept-Language': 'hi-IN' } })
     assert.equal(response.status, 410)
-    await response.body?.cancel()
+    if (route.startsWith('/f/')) {
+      const gone = await response.text()
+      assert.match(gone, /<html lang="hi">/)
+      assert.match(gone, /data-text="gone"/)
+    } else await response.body?.cancel()
   }
   assert.equal((await h.request('/api/files/invalid')).status, 404)
+})
+
+test('Worker rate-limited file page returns localized HTML, HEAD and raw keep empty bodies', async (t) => {
+  const h = await setup({ downloadRateLimit: 1 })
+  t.after(() => h.mf.dispose())
+  const headers = { 'CF-Connecting-IP': '192.0.2.4', 'Accept-Language': 'hi' }
+  const path = '/f/invalid'
+  const missing = await h.request(path, { headers })
+  assert.equal(missing.status, 404)
+  assert.match(await missing.text(), /data-text="missing"/)
+  const limited = await h.request(path, { headers })
+  assert.equal(limited.status, 429)
+  assert.equal(limited.headers.get('retry-after'), '60')
+  assert.match(limited.headers.get('content-security-policy')!, /script-src 'self'/)
+  const html = await limited.text()
+  assert.match(html, /<html lang="hi">/)
+  assert.match(html, /data-text="rateLimited"/)
+  for (const [route, method] of [[path, 'HEAD'], [path + '/download', 'GET'], ['/api/files/invalid', 'GET']]) {
+    const binary = await h.request(route, { method, headers })
+    assert.equal(binary.status, 429)
+    assert.equal(await binary.text(), '')
+  }
+  assert.equal(h.mock.ranges.length, 0)
 })
 
 test('分片故障拒绝、缓存关闭、首尾范围与版本变化', { timeout: 90000 }, async (t) => {
@@ -158,12 +186,16 @@ test('每片重新查 D1：中途撤回终止组装，D1 故障不读热缓存',
       })
       return new Response(body, { status: response.status, headers: Object.fromEntries(response.headers) })
     },
-  }), /撤销/)
+  }), (error) => error instanceof DownloadError && error.code === 'gone')
   assert.equal(calls, 2)
   assert.throws(() => sink.blob())
   const before = h.mock.ranges.length
   // 仅删除测试实例中的索引表以注入 D1 读故障，不涉及真实数据库。
   await h.db.prepare('DROP TABLE files').run()
+  const page = await h.request(`/f/${file.id}`, { headers: { 'Accept-Language': 'es' } })
+  assert.equal(page.status, 503)
+  assert.equal(page.headers.get('retry-after'), '10')
+  assert.match(await page.text(), /<html lang="es">/)
   const response = await h.request(`/api/files/${file.id}/chunk`, { headers: { 'If-Match': metadata.etag, Range: 'bytes=0-1048575' } })
   assert.equal(response.status, 503)
   assert.equal(h.mock.ranges.length, before)

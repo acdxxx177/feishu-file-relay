@@ -7,7 +7,7 @@ import path from 'node:path'
 import { setTimeout } from 'node:timers/promises'
 import { promisify } from 'node:util'
 import { patternBytesAt } from '../mocks/file-pattern.ts'
-import { DownloadError, downloadChunks, type DownloadMetadata } from '../src/browser/download-controller.ts'
+import { downloadChunks, type DownloadMetadata } from '../src/browser/download-controller.ts'
 
 interface Manifest {
   accountId: string
@@ -616,6 +616,11 @@ async function browserFull(file: Published, chunkSize: number, interrupt = false
   metadata.chunkSize = chunkSize
   const outputPath = path.resolve('.local', `browser-output-${runId}-${metadata.id}.bin`)
   const output = await open(outputPath, 'wx')
+  const stop = new AbortController()
+  const checkPlatformLimit = (reason: string) => {
+    if (platformLimited) stop.abort(new Error(reason))
+    stop.signal.throwIfAborted()
+  }
   let interrupted = false
   try {
     await downloadChunks(metadata, {
@@ -625,15 +630,15 @@ async function browserFull(file: Published, chunkSize: number, interrupt = false
       },
       truncate: (size) => output.truncate(size), close: () => output.close(), abort: () => output.close(),
     }, {
-      signal: new AbortController().signal,
+      signal: stop.signal,
       async wait(milliseconds) {
         await setTimeout(Math.max(2000, milliseconds))
         await refreshPlatformLimit()
-        if (platformLimited) throw new DownloadError('本阶段出现平台超限，停止重试')
+        checkPlatformLimit('本阶段出现平台超限，停止重试')
       },
       async fetcher(_input, init) {
         await refreshPlatformLimit()
-        if (platformLimited) throw new DownloadError('本阶段出现平台超限，停止后续分片')
+        checkPlatformLimit('本阶段出现平台超限，停止后续分片')
         const range = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get('Range')!)!
         const maximum = Number(range[2]) - Number(range[1]) + 1
         // 将预算包装器的生命周期绑定到浏览器控制器消费/取消正文，而非收到响应头。

@@ -1,7 +1,7 @@
 import type { FileRecord, SourceFile } from '../types'
 import { fileHeaders, publicError } from '../lib/headers'
 import { ifRangeMatches, parseRange } from '../lib/http-range'
-import { renderDownloadPage } from '../browser/page'
+import { downloadPageResponse, securityHeaders } from '../lib/download-page-response'
 import { CHUNK_SIZE, ChunkService, type ResourceFetcher } from './chunks'
 
 export interface DownloadDependencies {
@@ -14,18 +14,6 @@ export interface DownloadDependencies {
   readTimeoutMs?: number
   cacheEnabled?: boolean
   onUnavailable?: () => void
-}
-
-export function securityHeaders(): Headers {
-  return new Headers({ 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'X-Robots-Tag': 'noindex, nofollow', 'Referrer-Policy': 'no-referrer' })
-}
-
-function pageHeaders(): Headers {
-  const headers = securityHeaders()
-  headers.set('Content-Type', 'text/html; charset=utf-8')
-  headers.set('Content-Security-Policy', "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
-  headers.set('X-Frame-Options', 'DENY')
-  return headers
 }
 
 export function createDownloadHandlers(deps: DownloadDependencies) {
@@ -154,13 +142,11 @@ export function createDownloadHandlers(deps: DownloadDependencies) {
       const file = await authorize(id, request.method === 'HEAD')
       if (file instanceof Response) {
         if (metadata) return file
-        const headers = pageHeaders()
-        if (file.headers.has('Retry-After')) headers.set('Retry-After', file.headers.get('Retry-After')!)
-        return new Response(request.method === 'HEAD' ? null : renderDownloadPage(null, file.status), { status: file.status, headers })
+        return downloadPageResponse(request, null, file.status, file.headers.get('Retry-After'))
       }
       const publicFile = { id, name: file.file_name, size: file.file_size!, status: 'active', etag: fileHeaders(file).get('ETag')!, chunkSize: CHUNK_SIZE, blobLimit: 20 * 1024 * 1024 }
       if (metadata) return Response.json(publicFile, { headers: securityHeaders() })
-      return new Response(request.method === 'HEAD' ? null : renderDownloadPage(publicFile), { headers: pageHeaders() })
+      return downloadPageResponse(request, publicFile)
     },
   }
 }
