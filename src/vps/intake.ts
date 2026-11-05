@@ -42,8 +42,10 @@ function parseAction(payload: Record<string, unknown>, env: Config): IntakeActio
     const value = record(action.value)
     const context = record(event.context)
     const fileId = text(value.file_id)
+    // 按钮回调可能省略组件名；若返回名称仍须匹配，撤销绑定另在 D1 事务内核验。
+    const unexpectedButton = action.name !== undefined && action.name !== revokeButtonName
     if (payload.schema !== '2.0' || event.host !== 'im_message' || action.tag !== 'button' ||
-        action.name !== revokeButtonName || value.action !== 'revoke_file' || !/^[A-Za-z0-9]{22}$/.test(fileId)) {
+        unexpectedButton || value.action !== 'revoke_file' || !/^[A-Za-z0-9]{22}$/.test(fileId)) {
       throw new Error('Invalid card action')
     }
     return { kind: 'card', fileId, openId: text(record(event.operator).open_id),

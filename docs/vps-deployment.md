@@ -30,6 +30,14 @@ WHERE state = 'pending' AND
 
 飞书仅保证相同 UUID 在一小时内最多成功发送一次。重试是否会返回原卡片的消息 ID 需要在获准的测试应用验证。若未获得可确认的回执，查看发布任务和脱敏日志；不要手动重新登记同一文件。
 
+### 点击「撤销分享」提示 200671
+
+在飞书开发者后台查看该次点击对应的回调记录，核对请求地址、实际 HTTP 状态码和响应短句。回调地址应直接指向 HTTPS 的 `/webhook/feishu`，订阅项为 `card.action.trigger`。仓库的 Nginx 示例默认关闭访问日志。排查时只分享时间、状态码和响应短句，避免复制原始回调或凭据。[飞书回调错误码](https://open.feishu.cn/document/uAjLw4CM/ukzMukzMukzM/feishu-cards/card-callback-communication)
+
+- `400 Invalid event` 表示 VPS 已完成鉴权，但无法解析动作。`v1.1.0` 要求回调带上按钮的 `action.name`，缺少该字段会返回此错误。飞书的[按钮回调示例](https://open.feishu.cn/document/feishu-cards/card-json-v2-components/interactive-components/button)省略了此字段。
+- `401 Invalid callback` 表示鉴权或解密阶段失败。优先核对是否订阅新版回调、回调与收消息是否到达同一实例、应用配置及服务器时钟。用无签名的空 JSON 自查接口也会得到 401，不能据此判断飞书真实请求的验签结果。
+- `301/302` 或 `404` 先核对回调路径和重定向；网关返回 `502/503` 时检查反向代理上游和容器健康。上传者被拒绝、D1 提交结果未确认时，VPS 会返回 HTTP 200 的中文提示。需要立即撤销时，上传者可以发送「撤销 <公开链接>」。
+
 ## 本地构建和检查
 
 ```sh

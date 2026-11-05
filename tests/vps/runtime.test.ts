@@ -223,7 +223,19 @@ test('encrypted card callback binds the owner, source chat and original card and
       assert.equal((await (await h.post(denied)).json()).toast.type, 'error')
     }
     assert.equal(h.row('first')?.status, 'active')
-    const results = await Promise.all([h.post(click, { encrypted: true }), h.post(click)])
+    const wrongButton = { ...click, event: { ...click.event, action: { ...click.event.action, name: 'other_button' } } }
+    assert.equal((await h.post(wrongButton)).status, 400)
+    // 飞书按钮回调示例只含 tag、timezone 和 value，组件名称可能省略。
+    const { name: _name, ...action } = click.event.action
+    const unnamed = { ...click, event: { ...click.event, action } }
+    assert.equal((await h.post(unnamed, { encrypted: true, badSignature: true })).status, 401)
+    const impostor = { ...unnamed, event: { ...unnamed.event, operator: { open_id: 'admin' } } }
+    const denied = await h.post(impostor)
+    assert.equal(denied.status, 200)
+    assert.equal((await denied.json()).toast.type, 'error')
+    assert.equal(h.row('first')?.status, 'active')
+    const results = await Promise.all([h.post(unnamed, { encrypted: true }), h.post(click)])
+    assert.ok(results.every((response) => response.status === 200))
     const toasts = await Promise.all(results.map(async (r) => (await r.json()).toast.type))
     assert.deepEqual(toasts.sort(), ['info', 'success'])
     assert.equal(h.row('first')?.status, 'deleted')

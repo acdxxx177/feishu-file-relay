@@ -1,5 +1,11 @@
 # Project status
 
+## VPS card callback HTTP 400 investigation (2026-11-06)
+
+For PRD F08 and §8.4, the reported Feishu client error 200671 identifies a non-200 webhook response. A local signed request modeled on Feishu's documented button callback reproduced HTTP 400 in v1.1.0 when `event.action.name` was omitted. The VPS parser now accepts omission while rejecting a supplied, incorrect button name. Existing action type, file, actor, original card, chat and signature checks still apply. The isolated HTTP regression reproduced 400 before the change and passed afterward. VPS typecheck and all 65 regular VPS tests passed with zero skips.
+
+Public endpoint diagnostics from this workstation returned 200 for health and 401 for an unsigned empty webhook request. Neither test identifies the status returned to Feishu for the reported click. The actual click's HTTP status/body and real-client validation are pending. This fix is local and has not been released or deployed.
+
 ## VPS card image published (2026-11-06)
 
 Annotated tag `v1.1.0` points to `9dd17b961db2330c11fbca19c10350f93c52ac4e`. Both verification and publication succeeded in [GitHub Actions run 42129521044](https://github.com/acdxxx177/feishu-file-relay/actions/runs/42129521044). Anonymous GHCR manifest reads verified that `ghcr.io/acdxxx177/feishu-file-relay` tags `1.1.0`, `latest`, and `sha-9dd17b961db2330c11fbca19c10350f93c52ac4e` resolve to the same OCI index. Its bytes hash to `sha256:168eaac616f8c02beafbd6d3e0bcd479d3231b74e94d231eb9ba595a2d200c51` and it includes the Linux AMD64 image. Production VPS deployment and real-client Feishu acceptance remain pending.
