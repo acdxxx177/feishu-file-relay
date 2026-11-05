@@ -4,7 +4,9 @@
 
 For PRD F08 and §8.4, the reported Feishu client error 200671 identifies a non-200 webhook response. A local signed request modeled on Feishu's documented button callback reproduced HTTP 400 in v1.1.0 when `event.action.name` was omitted. The VPS parser now accepts omission while rejecting a supplied, incorrect button name. Existing action type, file, actor, original card, chat and signature checks still apply. The isolated HTTP regression reproduced 400 before the change and passed afterward. VPS typecheck and all 65 regular VPS tests passed with zero skips.
 
-Public endpoint diagnostics from this workstation returned 200 for health and 401 for an unsigned empty webhook request. Neither test identifies the status returned to Feishu for the reported click. The actual click's HTTP status/body and real-client validation are pending. This fix is local and has not been released or deployed.
+Public endpoint diagnostics from this workstation returned 200 for health and 401 for an unsigned empty webhook request. The actual click's HTTP status/body and real-client validation are pending.
+
+Tag `v1.1.1` points to fix commit `8747a831c573bce9d85aad57bc7a0b004a435ba3`. Verification and publication succeeded in [GitHub Actions run 42132870650](https://github.com/acdxxx177/feishu-file-relay/actions/runs/42132870650). Anonymous GHCR reads confirmed the `1.1.1`, `latest` and commit-specific tags all serve OCI index `sha256:c1d9974358e603cbd5e7f55b38098aeddc67b96185b019df934d1c9bb06cb02f` with a Linux AMD64 image. Deployment and Feishu client verification are pending.
 
 ## VPS card image published (2026-11-06)
 
