@@ -1,5 +1,9 @@
 # Project status
 
+## VPS card image published (2026-11-06)
+
+Annotated tag `v1.1.0` points to `9dd17b961db2330c11fbca19c10350f93c52ac4e`. Both verification and publication succeeded in [GitHub Actions run 42129521044](https://github.com/acdxxx177/feishu-file-relay/actions/runs/42129521044). Anonymous GHCR manifest reads verified that `ghcr.io/acdxxx177/feishu-file-relay` tags `1.1.0`, `latest`, and `sha-9dd17b961db2330c11fbca19c10350f93c52ac4e` resolve to the same OCI index. Its bytes hash to `sha256:168eaac616f8c02beafbd6d3e0bcd479d3231b74e94d231eb9ba595a2d200c51` and it includes the Linux AMD64 image. Production VPS deployment and real-client Feishu acceptance remain pending.
+
 ## VPS Feishu Card 2.0 notifications (2026-11-06)
 
 PRD F03/F06/F08/F09 and §8.4. The VPS now publishes a dynamically generated Chinese card with the full URL, native submit confirmation and an uploader-only revoke callback. The original bot message is updated after D1 commits revocation, recall or source loss. The permanent publication job stores the bot message ID separately from the source attachment. Historical notifications and the retained Worker use text. No new dependency, migration, card template or permission beyond the documented bot scope is required.
