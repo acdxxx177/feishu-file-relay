@@ -4,7 +4,7 @@ import type { FileCard } from '../../src/vps/cards/file-card'
 import { CHUNK_SIZE } from '../../src/vps/chunks'
 import { readConfig } from '../../src/vps/config'
 import { createDownloadHandlers } from '../../src/vps/download'
-import { CardDeliveryError, CardNotSentError, createFeishuClient, type FeishuClient } from '../../src/vps/feishu'
+import { CardDeliveryError, CardNotSentError, createFeishuClient, type FeishuClient, type NotificationCard } from '../../src/vps/feishu'
 import { runScheduled, type IntakeContext } from '../../src/vps/intake'
 import { databaseFixture } from './database-fixture'
 
@@ -18,7 +18,7 @@ const url = config.PUBLIC_BASE_URL + '/f/' + file.id
 async function harness(t: TestContext) {
   const { db, repository } = databaseFixture()
   t.after(async () => { await repository.close(); db.close() })
-  const creates: { chat: string; card: FileCard; uuid: string }[] = []
+  const creates: { chat: string; card: NotificationCard; uuid: string }[] = []
   const updates: { target: string; card: FileCard }[] = []
   const texts: string[] = []
   let reads = 0

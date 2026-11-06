@@ -1,10 +1,12 @@
 import { DatabaseSync } from 'node:sqlite'
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { D1HttpTransport } from '../src/db/d1-http'
 
 const sql = "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name IN ('files','recalled_messages','processed_events','bot_jobs','idx_files_status_created','idx_files_uploader','idx_jobs_due') ORDER BY type,name"
 const local = new DatabaseSync(':memory:')
-local.exec(await readFile('migrations/0001_init.sql', 'utf8'))
+for (const name of (await readdir('migrations')).filter(name => name.endsWith('.sql')).sort()) {
+  local.exec(await readFile(`migrations/${name}`, 'utf8'))
+}
 const expected = local.prepare(sql).all()
 let actual: Record<string, unknown>[] = expected
 if (process.argv.includes('--remote')) {

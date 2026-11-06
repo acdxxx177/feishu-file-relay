@@ -3,6 +3,7 @@ import { fileHeaders, publicError } from '../lib/headers'
 import { ifRangeMatches, parseRange } from '../lib/http-range'
 import { downloadPageResponse, securityHeaders } from '../lib/download-page-response'
 import { CHUNK_SIZE, ChunkService, type ResourceFetcher } from './chunks'
+import type { DownloadSessions } from './download-sessions'
 
 export interface DownloadDependencies {
   repository: {
@@ -14,6 +15,7 @@ export interface DownloadDependencies {
   readTimeoutMs?: number
   cacheEnabled?: boolean
   onUnavailable?: () => void
+  sessions?: DownloadSessions
 }
 
 export function createDownloadHandlers(deps: DownloadDependencies) {
@@ -54,6 +56,7 @@ export function createDownloadHandlers(deps: DownloadDependencies) {
     if (range.partial) headers.set('Content-Range', `bytes ${range.start}-${range.end}/${file.file_size}`)
     const status = range.partial ? 206 : 200
     if (head) return new Response(null, { status, headers })
+    const completedRange = browser ? deps.sessions?.observe(request, file, range.start, range.end) : undefined
     const abort = new AbortController()
     const onAbort = () => abort.abort(request.signal.reason)
     request.signal.addEventListener('abort', onAbort, { once: true })
@@ -109,6 +112,7 @@ export function createDownloadHandlers(deps: DownloadDependencies) {
             piece++
             if (offset > range.end) {
               if (sent !== length) throw new Error('Incomplete transfer')
+              completedRange?.()
               finished = true
               request.signal.removeEventListener('abort', onAbort)
               if (browser && range.start === 0) await deps.repository.countDownload(id).catch(() => {})
@@ -144,7 +148,8 @@ export function createDownloadHandlers(deps: DownloadDependencies) {
         if (metadata) return file
         return downloadPageResponse(request, null, file.status, file.headers.get('Retry-After'))
       }
-      const publicFile = { id, name: file.file_name, size: file.file_size!, status: 'active', etag: fileHeaders(file).get('ETag')!, chunkSize: CHUNK_SIZE, blobLimit: 20 * 1024 * 1024 }
+      const publicFile = { id, name: file.file_name, size: file.file_size!, status: 'active', etag: fileHeaders(file).get('ETag')!, chunkSize: CHUNK_SIZE, blobLimit: 20 * 1024 * 1024,
+        ...(deps.sessions?.eligible(file) ? { firstDownloadNotification: true } : {}) }
       if (metadata) return Response.json(publicFile, { headers: securityHeaders() })
       return downloadPageResponse(request, publicFile)
     },

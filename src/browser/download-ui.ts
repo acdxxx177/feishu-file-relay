@@ -1,5 +1,6 @@
 import { createBlobSink, downloadChunks, DownloadError, MAX_BLOB_BYTES, type DownloadMetadata, type DownloadSink, type TransferEvent } from './download-controller.ts'
 import { isLocale, messages, rememberLanguage, resolveLanguages, savedPreference, type Locale } from './i18n.ts'
+import { createDownloadConfirmation, startDownloadSession } from './download-confirmation.ts'
 
 type Copy = ReturnType<typeof messages>
 type TextKey = { [K in keyof Copy]: Copy[K] extends string ? K : never }[keyof Copy]
@@ -26,6 +27,8 @@ function bindTransfer(panel: HTMLElement, initial: Copy): (copy: Copy) => void {
   let feedback: 'copied' | 'copyUnsupported' | 'copyFailed' | undefined
   let active: AbortController | undefined
   let blobUrl: string | undefined
+  let blobConfirmation: ReturnType<typeof createDownloadConfirmation> | undefined
+  let pageLifetime = new AbortController()
   let frame = 0
   const picker = window.isSecureContext ? (window as PickerWindow).showSaveFilePicker : undefined
   const canStream = typeof picker === 'function'
@@ -81,19 +84,23 @@ function bindTransfer(panel: HTMLElement, initial: Copy): (copy: Copy) => void {
   function releaseBlob(): void {
     if (blobUrl) URL.revokeObjectURL(blobUrl)
     blobUrl = undefined
+    blobConfirmation = undefined
     save.removeAttribute('href')
     save.hidden = true
   }
 
   cancel.addEventListener('click', () => active?.abort())
+  save.addEventListener('click', (event) => { if (blobUrl && !save.hidden) void blobConfirmation?.save(event) })
   window.addEventListener('pagehide', () => {
     active?.abort()
+    pageLifetime.abort()
     if (frame) { cancelAnimationFrame(frame); frame = 0 }
     if (blobUrl) {
       releaseBlob()
       changePhase('ready')
     }
   })
+  window.addEventListener('pageshow', () => { if (pageLifetime.signal.aborted) pageLifetime = new AbortController() })
   const warnBeforeLeaving = (event: BeforeUnloadEvent) => event.preventDefault()
   copy.addEventListener('click', async () => {
     try {
@@ -138,9 +145,14 @@ function bindTransfer(panel: HTMLElement, initial: Copy): (copy: Copy) => void {
         blobSink = createBlobSink(total, metadata.blobLimit)
         sink = blobSink
       }
+      const method = blobSink ? 'blob' : 'native'
+      const sessionToken = await startDownloadSession(metadata, method, { signal: abort.signal })
+      abort.signal.throwIfAborted()
+      const confirmation = sessionToken ? createDownloadConfirmation(metadata.id, sessionToken, method, { signal: pageLifetime.signal }) : undefined
       changePhase('downloading')
       await downloadChunks(metadata, sink, {
         signal: abort.signal,
+        sessionToken,
         progress(value) {
           bytes = value
           if (phase !== 'downloading') changePhase('downloading')
@@ -154,8 +166,11 @@ function bindTransfer(panel: HTMLElement, initial: Copy): (copy: Copy) => void {
         blobUrl = URL.createObjectURL(blobSink.blob())
         save.href = blobUrl
         save.download = metadata.name
+        blobConfirmation = confirmation
         phase = 'blobReady'
       } else phase = 'saved'
+      // 保存结果已经确定；通知独立重试，不进入上面的文件写入/回滚异常链。
+      void confirmation?.downloaded()
     } catch (cause) {
       await sink?.abort().catch(() => {})
       const cancelled = abort.signal.aborted || cause instanceof DOMException && cause.name === 'AbortError'

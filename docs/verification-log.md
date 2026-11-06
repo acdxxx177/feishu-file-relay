@@ -1,5 +1,41 @@
 # 验证日志
 
+## 首次确认下载通知（2026-11-06）
+
+按用户批准口径实现：仅启用后新登记文件参与；原生保存提交成功、或完整 Blob 后真实保存点击才确认；原始下载不通知。原下载统计不变。会话内存最多 1,000 条/24 小时，确认入库后用永久唯一任务与现有持久调度器投递。记录[操作与限制说明](first-download-notifications.md)。
+
+| 检查 | 实际结果 |
+| --- | --- |
+| `pnpm typecheck`、`pnpm typecheck:worker` | 最终均通过 |
+| `pnpm test` | 100/100 通过，零跳过 |
+| `pnpm test:large` | 3/3 通过，零跳过 |
+| `pnpm test:worker` | 35/35 通过，零跳过 |
+| 增强后的 Chromium UI 定向重跑 | 1/1 通过，包含两次真实可信 Blob 保存动作 |
+| `pnpm check:health` | HTTP 200 |
+| `pnpm db:check`、`pnpm exec prisma validate` | 本地按序迁移参考 schema 及 Prisma schema 均通过，不读取远程库 |
+| `pnpm test:linux`（Windows） | 1 项明确跳过；随后在 WSL 执行同一测试通过，见下文 |
+| `pnpm test:docker` | 3 项明确跳过：Docker CLI/引擎不可用 |
+| 前端 premium 严格静态审查 | 零发现；忽略目录 `.local/premium-first-download-audit.json` 保留报告 |
+| 独立只读审查 | 无阻塞发现；独立运行会话、地理、数据库和投递 21/21 测试通过 |
+
+覆盖了缺片、乱序、重复片、跨会话、截断/超长/异常/取消、失败分片恢复、原始下载与 Range、HEAD/元数据/预取排除、Origin/令牌/方法/版本绑定、历史资格、会话过期/容量/重启边界、撤回与 warm cache、并发确认、未知 D1 提交、旧租约及飞书接受后回执丢失。一小时窗口内保持原 UUID/卡片，过窗停止；永久拒绝无替代消息，八次尝试上限有效。
+
+大文件使用本地 HTTP 源和 relay，原始完整、原始中断恢复及带会话浏览器分片中断恢复均核对相同 SHA-256；未完成返回 409，收齐确认后返回 204，重复确认仍只有一条事件。
+
+| 大小 | SHA-256 |
+| --- | --- |
+| 100 MiB | `a14a09201182b6fb326acd2621160dc152597264d3980253e93e580a593e4fef` |
+| 500 MiB | `d5628966fba65be6fac98dc2c51c663dc05efb4440f784739038cee33a9de23c` |
+| 1024 MiB | `88d70583c2ecc851ea3debfbefca7da4b9295959a1412927cb8e60207e2c51c7` |
+
+真实 Chromium 在 390×844、减少动效、已切换语言的页面中，用浏览器进程外的 CDP 键盘 Enter 激活 Blob 保存两次：得到两个 `isTrusted=true` 事件、一个完成 POST、两个正常落盘的 20 MiB 文件。两份哈希均为 `ae2eeb253c2b00e1f187bc1c665186f82d8780d25eb670f92629ec5a9dcd8275`。未点击和合成点击均不报告，Blob URL、焦点和窄屏布局保持正确。原生 close 成功/失败采用受控 writable sink，不声称本次重新验证了系统原生选择器落盘。
+
+Linux 验证复用忽略目录已有的 Node 24.22.2 与 Nginx 1.28.3。在 Windows 用 esbuild 将最新 `tests/vps/linux/proxy.test.ts` 打包为 `.local/linux/first-download-proxy.test.mjs`（Node 平台、ESM、Node24 target，banner 用 `createRequire` 支持 Prisma 的 Node 内置模块加载），再由 WSL Ubuntu 设置 `NGINX_TEST_BINARY` 后运行 `node --test`。最终 1/1 通过、零跳过。测试使用临时证书、高端口、本地假 D1/飞书与回环地址模拟可信 IPv4/IPv6 对端，未信任真实公网测试地址。验证原始对端在 real-IP 重写后仍正确、不可信直连地理头被清空、中文地理头字节正确、完整 100 MiB 哈希、Range、撤回、响应头前取消及无临时文件；结束时清理测试进程和目录。
+
+中间检查发现并修复了测试类型推导及 Worker 编译边界问题：新增浏览器模块必须与现有控制器一起排除出 Worker 类型环境，由浏览器 tsconfig 检查。WSL 首次打包缺少 ESM `createRequire` banner，修正后进入测试。代理测试首次用 Node 字符串正文再次编码了模拟 UTF-8 头，改为 Buffer 正文并加入 GET/POST 原始字节断言后通过；没有因此放宽生产地理解析。
+
+未执行生产或远程迁移、真实文件登记、真实飞书通知、镜像发布或部署。Docker 运行验收、隔离远程 D1 主库/事务合同、飞书真实 UUID 去重回执及目标 Cloudflare/Nginx 配置仍需分别验收。旧 Worker 大文件和十路压力测试未在此次重跑；上述数字仅指本次列出的检查。
+
 ## VPS 卡片回调 HTTP 401 修复（2026-11-06）
 
 获准对目标 VPS 只读诊断后，Nginx 记录两次用户确认的测试点击分别于北京时间 09:31:42、09:34:02 返回 401，期间普通消息返回 200。内存诊断确认卡片回调解密、Token、App ID、签名均匹配，正文时间有效；请求头时间戳不是数字。旧代码因此在验签前误拒绝。原始回调及请求头原值未保存，两个临时诊断进程均已退出。

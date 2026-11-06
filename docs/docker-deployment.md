@@ -4,6 +4,8 @@
 
 ## 生成并填写环境配置
 
+新版本支持默认关闭的 `FIRST_DOWNLOAD_NOTIFICATION_ENABLED` 与 `TRUST_CLOUDFLARE_GEO`。升级前须先应用 `0002_first_download_notification.sql`；地理信任还要求实际 Nginx 覆盖并验证内部头。按[首次确认下载通知](first-download-notifications.md)完成迁移和代理验收，再启用。旧消费者回滚前须排空新通知待办。
+
 在仓库根目录执行（Node.js 24；生成脚本本身无需安装依赖）：
 
 ```sh

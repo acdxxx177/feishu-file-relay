@@ -22,7 +22,7 @@
     "worker-configuration.d.ts"
   ],
   "exclude": [
-    "src/browser/download-controller.ts", "src/browser/download-ui.ts",
+    "src/browser/download-controller.ts", "src/browser/download-ui.ts", "src/browser/download-confirmation.ts",
     "src/vps",
     "src/generated",
     "src/db/repository.ts",

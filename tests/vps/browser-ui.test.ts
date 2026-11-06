@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { once } from 'node:events'
 import { existsSync } from 'node:fs'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import type { Server } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { setTimeout as delay } from 'node:timers/promises'
 import { serve } from '@hono/node-server'
 import { build } from 'esbuild'
-import { createMock } from '../../mocks/feishu-mock'
+import { bytesAt, createMock } from '../../mocks/feishu-mock'
 import { createApplication } from '../../src/vps/app'
 import { readConfig } from '../../src/vps/config'
 import { createFeishuClient } from '../../src/vps/feishu'
@@ -23,10 +25,55 @@ const browser = [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
 ].find((path): path is string => !!path && existsSync(path))
 
+async function connectBrowser(profile: string) {
+  let endpoint: string | undefined
+  for (let attempt = 0; attempt < 200; attempt++) {
+    try {
+      const [port, path] = (await readFile(join(profile, 'DevToolsActivePort'), 'utf8')).trim().split('\n')
+      endpoint = `ws://127.0.0.1:${Number(port)}${path}`
+      break
+    } catch { await delay(50) }
+  }
+  assert.ok(endpoint, 'Chromium did not expose its isolated debugging endpoint')
+  const socket = new WebSocket(endpoint)
+  await once(socket, 'open')
+  let nextId = 0
+  const pending = new Map<number, { resolve: (result: Record<string, any>) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>()
+  const downloads = new Map<string, 'started' | 'completed' | 'canceled'>()
+  socket.addEventListener('message', event => {
+    const message = JSON.parse(String(event.data))
+    if (message.id) {
+      const request = pending.get(message.id)
+      if (!request) return
+      clearTimeout(request.timer)
+      pending.delete(message.id)
+      if (message.error) request.reject(new Error(message.error.message))
+      else request.resolve(message.result)
+    } else if (message.method === 'Browser.downloadWillBegin') downloads.set(message.params.guid, 'started')
+    else if (message.method === 'Browser.downloadProgress' && message.params.state !== 'inProgress') downloads.set(message.params.guid, message.params.state)
+  })
+  return {
+    downloads,
+    send(method: string, params: Record<string, unknown> = {}, sessionId?: string): Promise<Record<string, any>> {
+      const id = ++nextId
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { pending.delete(id); reject(new Error('CDP timeout: ' + method)) }, 10_000)
+        pending.set(id, { resolve, reject, timer })
+        socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }))
+      })
+    },
+    close() {
+      for (const request of pending.values()) { clearTimeout(request.timer); request.reject(new Error('CDP closed')) }
+      pending.clear()
+      socket.close()
+    },
+  }
+}
+
 test('served download UI preserves active transfers, localization and Blob limits in Chromium', {
   skip: browser ? false : 'Set CHROME_PATH to run the real-browser test', timeout: 150_000,
 }, async (t) => {
-  const sizes = { transfer: 8, blob: 20 * 1024 * 1024, oversized: 20 * 1024 * 1024 + 1 }
+  const sizes = { transfer: 8, blob: 20 * 1024 * 1024, saveFailure: 8, oversized: 20 * 1024 * 1024 + 1 }
   const scenarios = Object.keys(sizes) as (keyof typeof sizes)[]
   const filename = '共享-साझा-instrucciones <final>.zip'
   const fixture = databaseFixture()
@@ -52,10 +99,18 @@ test('served download UI preserves active transfers, localization and Blob limit
   let finish!: () => void
   let fail!: (error: Error) => void
   const done = new Promise<void>((resolve, reject) => { finish = resolve; fail = reject })
+  let keyboard!: () => Promise<void>
+  let keyboardReady!: () => void
+  const ready = new Promise<void>(resolve => { keyboardReady = resolve })
   const completed: string[] = []
   const server = serve({ hostname: '127.0.0.1', port: 0, async fetch(request, bindings) {
     const { pathname } = new URL(request.url)
     if (pathname === '/test-driver.js') return new Response(driver.outputFiles[0].text, { headers: { 'Content-Type': 'text/javascript' } })
+    if (pathname === '/test-keyboard-save' && request.method === 'POST') {
+      await ready
+      await keyboard()
+      return new Response(null, { status: 204 })
+    }
     if (pathname === '/test-result' && request.method === 'POST') {
       const result = await request.json() as { scenario: string; error?: string }
       if (result.error) fail(new Error(result.scenario + ': ' + result.error))
@@ -75,8 +130,9 @@ test('served download UI preserves active transfers, localization and Blob limit
   assert.ok(address && typeof address !== 'string')
 
   const profile = await mkdtemp(join(tmpdir(), 'relay-browser-'))
+  const downloadDirectory = await mkdtemp(join(tmpdir(), 'relay-browser-download-'))
   const args = ['--headless', '--disable-gpu', '--disable-background-networking', '--no-first-run', '--no-default-browser-check',
-    '--disable-features=Translate,MediaRouter', '--user-data-dir=' + profile]
+    '--disable-features=Translate,MediaRouter', '--remote-debugging-port=0', '--user-data-dir=' + profile]
   if (process.platform === 'linux' && process.getuid?.() === 0) args.push('--no-sandbox')
   const child = spawn(browser!, [...args, 'http://127.0.0.1:' + address.port + pathFor('transfer')], { windowsHide: true, stdio: 'ignore' })
   const closed = once(child, 'close')
@@ -84,11 +140,37 @@ test('served download UI preserves active transfers, localization and Blob limit
     child.kill()
     await closed
     await rm(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 })
+    await rm(downloadDirectory, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 })
   })
+  const cdp = await connectBrowser(profile)
+  t.after(() => cdp.close())
+  await cdp.send('Browser.setDownloadBehavior', { behavior: 'allowAndName', downloadPath: downloadDirectory, eventsEnabled: true })
+  const { targetInfos } = await cdp.send('Target.getTargets')
+  const target = targetInfos.find((item: { type: string; url: string }) => item.type === 'page' && item.url.startsWith('http://127.0.0.1:' + address.port))
+  assert.ok(target, 'Missing relay browser page')
+  const { sessionId } = await cdp.send('Target.attachToTarget', { targetId: target.targetId, flatten: true })
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false }, sessionId)
+  await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] }, sessionId)
+  keyboard = async () => {
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, text: '\r' }, sessionId)
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 }, sessionId)
+  }
+  keyboardReady()
   const timer = setTimeout(() => fail(new Error('Timed out waiting for browser at ' + scenarios[completed.length])), 120_000)
   try {
     await Promise.race([done, closed.then(([code]) => { throw new Error('Chromium exited before completing tests: ' + code) })])
   } finally { clearTimeout(timer) }
   assert.deepEqual(completed, scenarios)
   assert.equal(mock.ranges.filter(read => read.key === 'oversized').length, 0)
+  for (let attempt = 0; attempt < 200 && [...cdp.downloads.values()].filter(state => state === 'completed').length < 2; attempt++) await delay(50)
+  assert.equal(cdp.downloads.size, 2, 'Trusted repeated Save must still start two normal browser downloads')
+  const expected = createHash('sha256').update(bytesAt(0, sizes.blob)).digest('hex')
+  for (const [guid, state] of cdp.downloads) {
+    assert.equal(state, 'completed')
+    assert.match(guid, /^[a-f0-9-]{36}$/)
+    const file = await readFile(join(downloadDirectory, guid))
+    assert.equal(file.byteLength, sizes.blob)
+    assert.equal(createHash('sha256').update(file).digest('hex'), expected)
+  }
+  console.log(JSON.stringify({ event: 'browser_trusted_blob_save', saves: 2, bytes: sizes.blob, sha256: expected, viewport: 390, reducedMotion: true }))
 })

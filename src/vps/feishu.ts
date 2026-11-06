@@ -3,6 +3,9 @@ import { setTimeout as delay } from 'node:timers/promises'
 import type { Config } from './config'
 import type { SourceFile } from '../types'
 import type { FileCard } from './cards/file-card'
+import type { FirstDownloadCard } from './cards/first-download-card'
+
+export type NotificationCard = FileCard | FirstDownloadCard
 
 type CardFailure = 'invalid_card' | 'expired' | 'recalled' | 'not_editable' | 'denied'
 
@@ -52,7 +55,7 @@ export async function readSmallText(response: Response, maxBytes = 65536): Promi
 export interface FeishuClient {
   fetchResource(file: Pick<SourceFile, 'message_id' | 'file_key'>, start: number, end: number, signal?: AbortSignal): Promise<Response>
   sendText(chatId: string, text: string, uuid: string, signal?: AbortSignal): Promise<void>
-  sendCard(chatId: string, card: FileCard, uuid: string, signal?: AbortSignal): Promise<string>
+  sendCard(chatId: string, card: NotificationCard, uuid: string, signal?: AbortSignal): Promise<string>
   updateCard(messageId: string, card: FileCard, signal?: AbortSignal): Promise<void>
   close(): void
 }

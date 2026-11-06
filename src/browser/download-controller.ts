@@ -1,6 +1,6 @@
 export const MAX_BLOB_BYTES = 20 * 1024 * 1024
 
-export interface DownloadMetadata { id: string; name: string; size: number; status: string; etag: string; chunkSize: number; blobLimit: number }
+export interface DownloadMetadata { id: string; name: string; size: number; status: string; etag: string; chunkSize: number; blobLimit: number; firstDownloadNotification?: boolean }
 export interface DownloadSink {
   write(position: number, bytes: Uint8Array): Promise<void>
   truncate(size: number): Promise<void>
@@ -52,6 +52,7 @@ export async function downloadChunks(metadata: DownloadMetadata, sink: DownloadS
   wait?: (milliseconds: number, signal: AbortSignal) => Promise<void>
   random?: () => number
   chunkUrl?: string
+  sessionToken?: string
 }): Promise<void> {
   const { signal } = options
   try {
@@ -70,7 +71,8 @@ export async function downloadChunks(metadata: DownloadMetadata, sink: DownloadS
         try {
           deadline()
           const response = await (options.fetcher ?? fetch)(options.chunkUrl ?? `/api/files/${encodeURIComponent(metadata.id)}/chunk`, {
-            headers: { Range: `bytes=${start}-${end}`, 'If-Match': metadata.etag },
+            headers: { Range: `bytes=${start}-${end}`, 'If-Match': metadata.etag,
+              ...(options.sessionToken ? { 'X-Download-Session': options.sessionToken } : {}) },
             cache: 'no-store', credentials: 'omit', redirect: 'error', signal: requestAbort.signal,
           })
           clearTimeout(timer)

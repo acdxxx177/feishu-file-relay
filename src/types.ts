@@ -17,6 +17,8 @@ export interface FileRecord {
   created_at: string
   updated_at: string
   deleted_at: string | null
+  /** 旧运行时/历史记录默认不参与首次确认通知。 */
+  first_download_notification?: number
 }
 
 export type SourceFile = Pick<FileRecord, 'id' | 'message_id' | 'file_key' | 'version'> & { file_size: number }

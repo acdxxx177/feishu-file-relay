@@ -4,6 +4,8 @@
 
 ## 当前交付边界
 
+首次确认下载通知默认关闭。升级须先应用新增资格列迁移；启用、可信地理头、重试限制及旧消费者回滚要求见[首次确认下载通知](first-download-notifications.md)。本文中“VPS 迁移不改 schema”仅描述原始运行时迁移，不适用于此后新增功能。
+
 应用采用 Node.js 24、Hono、Prisma 7.10.1，VPS 直接请求飞书内容及 Cloudflare D1 REST API。数据库仍是原生产 D1，原有 ID、记录和 `https://dl.sinoballvalve.com/f/<id>` 不变。本次代码交付没有部署生产、修改 DNS 或注册真实文件。
 
 旧 Worker 入口、配置及脚本保留作恢复材料；默认 `build/dev/test` 已改为 VPS，旧验证使用 `*:worker`。`pnpm deploy` 故意拒绝自动发布，生产变更必须按下方清单授权执行。
@@ -58,7 +60,7 @@ pnpm db:diff
 
 Linux 已安装 Nginx 时，可设置 `NGINX_TEST_BINARY` 为其绝对路径并运行 `pnpm test:linux`。该测试生成临时自签证书、在回环高端口启动独立 Nginx、使用本地假 D1/飞书，检查 HTTPS 100 MiB 哈希、Range、撤回、断连及无响应临时文件；退出时停止本次 Nginx 并清理本次测试目录。Windows 或未指定二进制时显式跳过，不能算 Linux 验收。
 
-`db:generate` 只生成忽略入库的 Prisma Client；`db:check` 默认仅检查本地初始 schema；`db:diff` 从既有迁移创建本次专属影子库，输出 `.local/prisma-candidate.sql`，不执行任何远程操作。Prisma 对 BIGINT 等声明和 CHECK 支持的差异可能生成表重建 SQL，**不能直接应用初次 diff**。本次没有必要改变业务表，也不需要新迁移。
+`db:generate` 只生成忽略入库的 Prisma Client；`db:check` 默认按顺序加载全部本地迁移生成参考 schema，不读取远程数据；`db:diff` 从既有迁移创建本次专属影子库，输出 `.local/prisma-candidate.sql`，不执行任何远程操作。Prisma 对 BIGINT 等声明和 CHECK 支持的差异可能生成表重建 SQL，**不能直接应用初次 diff**。原始 VPS 运行时迁移无需改表；首次确认下载通知新增 `0002_first_download_notification.sql`，须在新二进制启动前单独应用，不重建现有表。
 
 开发可复制 `.env.example` 为受保护的 `.env` 后执行 `pnpm dev`；运行构建用 `pnpm start`。真实配置启动后会立即恢复数据库待办，因此未获批准时不能连接生产库试运行。测试注入假凭据和本地 transport，不读取 `.env`。
 

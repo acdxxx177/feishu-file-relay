@@ -2,6 +2,20 @@ import type { FileRecord } from '../types'
 
 export const unsentCardPrefix = 'unsent:'
 
+export interface FirstDownloadSnapshot {
+  schema: 1
+  fileName: string
+  confirmedAt: string
+  method: 'native' | 'blob'
+  location: { country?: string; region?: string; city?: string }
+}
+
+export interface FirstDownloadJobPayload {
+  snapshot: FirstDownloadSnapshot
+  delivery: 'unsent' | 'uncertain'
+  failureReason?: string
+}
+
 export interface PendingFile extends FileRecord {
   next_attempt_at: number
   lease_until: number
@@ -22,7 +36,7 @@ export interface BotJob {
   created_at: string
 }
 
-export type Registration = Pick<FileRecord, 'id' | 'message_id' | 'file_key' | 'file_name' | 'uploader_open_id' | 'chat_id'>
+export type Registration = Pick<FileRecord, 'id' | 'message_id' | 'file_key' | 'file_name' | 'uploader_open_id' | 'chat_id'> & { first_download_notification?: number }
 export type Command = Pick<BotJob, 'id' | 'message_id' | 'uploader_open_id' | 'chat_id' | 'argument'>
 export type FileListItem = Pick<FileRecord, 'id' | 'file_name' | 'download_count'>
 
@@ -31,6 +45,11 @@ export interface RelayRepository {
   getDownloadFile(id: string): Promise<FileRecord | null>
   markUnavailable(id: string): Promise<boolean>
   countDownload(id: string): Promise<void>
+  recordFirstDownload(id: string, version: number, snapshot: FirstDownloadSnapshot): Promise<boolean>
+  beginFirstDownloadNotification(job: BotJob): Promise<boolean>
+  retryFirstDownloadNotification(job: BotJob, knownUnsent: boolean, reason: string): Promise<void>
+  finishFirstDownloadNotification(job: BotJob, messageId: string): Promise<void>
+  failFirstDownloadNotification(job: BotJob, reason: string): Promise<void>
   registerFile(eventId: string, file: Registration): Promise<void>
   recallFile(eventId: string, messageId: string): Promise<void>
   createCommand(eventId: string, job: Command): Promise<void>

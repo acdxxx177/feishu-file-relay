@@ -24,6 +24,7 @@ model File {
   attempts         Int     @default(0)
   downloadCount    BigInt  @default(0) @map("download_count")
   lastDownloadedAt String? @map("last_downloaded_at")
+  firstDownloadNotification Int @default(0) @map("first_download_notification")
   createdAt        String  @default(dbgenerated("CURRENT_TIMESTAMP")) @map("created_at")
   updatedAt        String  @default(dbgenerated("CURRENT_TIMESTAMP")) @map("updated_at")
   deletedAt        String? @map("deleted_at")

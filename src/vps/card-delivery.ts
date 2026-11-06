@@ -1,6 +1,7 @@
 import { unsentCardPrefix, type BotJob } from '../db/repository'
 import type { FileRecord } from '../types'
 import { buildFileCard } from './cards/file-card'
+import { buildFirstDownloadCard, readFirstDownloadPayload } from './cards/first-download-card'
 import { executeCommand } from './commands'
 import type { Config } from './config'
 import { CardDeliveryError, CardNotSentError, messageUuid } from './feishu'
@@ -83,11 +84,46 @@ async function updateCard(ctx: IntakeContext, job: BotJob, file: FileRecord, pub
   await ctx.repository.finishCardUpdate(job, file.status)
 }
 
+async function firstDownloadCard(ctx: IntakeContext, job: BotJob, signal: AbortSignal) {
+  let payload: ReturnType<typeof readFirstDownloadPayload>
+  try { payload = readFirstDownloadPayload(job.argument) } catch {
+    await failDelivery(ctx, job, 'invalid_first_download_snapshot')
+    return
+  }
+  const knownUnsent = payload.delivery === 'unsent'
+  if (!knownUnsent && !canRepeatCreate(job)) {
+    await ctx.repository.failFirstDownloadNotification(job, 'create_deduplication_expired')
+    console.warn(JSON.stringify({ event: 'first_download_delivery_failed', file_id: job.file_id, reason: 'create_deduplication_expired' }))
+    return
+  }
+  const card = buildFirstDownloadCard(payload.snapshot)
+  if (!await ctx.repository.beginFirstDownloadNotification(job)) return
+  let receipt: string
+  try {
+    receipt = await ctx.feishu.sendCard(job.chat_id, card, messageUuid(job.id), signal)
+  } catch (error) {
+    if (error instanceof CardDeliveryError) {
+      await ctx.repository.failFirstDownloadNotification(job, error.reason)
+      console.warn(JSON.stringify({ event: 'first_download_delivery_failed', file_id: job.file_id, reason: error.reason }))
+    } else {
+      // 后一次请求未发送，不能消除前一次请求可能已送达的不确定性。
+      const unsent = knownUnsent && error instanceof CardNotSentError
+      await ctx.repository.retryFirstDownloadNotification(job, unsent, unsent ? 'not_sent' : 'delivery_unknown')
+      console.warn(JSON.stringify({ event: job.attempts >= 8 ? 'first_download_delivery_failed' : 'first_download_delivery_retry',
+        file_id: job.file_id, reason: unsent ? 'not_sent' : 'delivery_unknown' }))
+    }
+    return
+  }
+  await ctx.repository.finishFirstDownloadNotification(job, receipt)
+}
+
 export async function deliverBotJob(env: Config, ctx: IntakeContext, job: BotJob): Promise<void> {
   const signal = AbortSignal.any([ctx.signal, AbortSignal.timeout(deliveryTimeoutMs)])
   let message = job.argument
   if (job.kind === 'command') {
     message = await executeCommand(env, ctx.repository, job)
+  } else if (job.file_id && job.id === `first-download:card:${job.file_id}`) {
+    return firstDownloadCard(ctx, job, signal)
   } else if (job.file_id && (job.id.startsWith('active:') || job.id.startsWith('card:') || job.id.startsWith('fallback:'))) {
     const file = await ctx.repository.getFile(job.file_id)
     if (!file) return failDelivery(ctx, job, 'missing_file')

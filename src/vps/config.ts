@@ -24,6 +24,8 @@ export interface Config {
   maxDownloads: number
   rateLimit: number
   trustProxy: boolean
+  firstDownloadNotification: boolean
+  trustCloudflareGeo: boolean
   trustedProxyIps: string[]
   shutdownMs: number
   pollMs: number
@@ -70,6 +72,8 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
     token: required('CLOUDFLARE_D1_TOKEN'), d1Budget: integer('D1_REQUEST_BUDGET', 900, 101, 1200),
     cacheEnabled: boolean('CHUNK_CACHE_ENABLED'), maxDownloads: integer('MAX_CONCURRENT_DOWNLOADS', 10),
     rateLimit: integer('DOWNLOAD_RATE_LIMIT', 60), trustProxy: boolean('TRUST_PROXY'),
+    firstDownloadNotification: boolean('FIRST_DOWNLOAD_NOTIFICATION_ENABLED'),
+    trustCloudflareGeo: boolean('TRUST_CLOUDFLARE_GEO'),
     trustedProxyIps: parseTrustedProxyIps(env.TRUSTED_PROXY_IPS),
     shutdownMs: integer('SHUTDOWN_TIMEOUT_MS', 60000), pollMs: integer('JOB_POLL_MS', 15000, 1000),
   }

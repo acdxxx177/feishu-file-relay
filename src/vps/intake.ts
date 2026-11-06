@@ -124,7 +124,8 @@ export async function handleWebhook(request: Request, env: Config, ctx: IntakeCo
       log('message_recalled')
     } else if (action.kind !== 'ignore') {
       if (action.kind === 'file') {
-        await ctx.repository.registerFile(action.eventId, { id: newFileId(), message_id: action.messageId, file_key: action.fileKey, file_name: action.fileName, uploader_open_id: action.openId, chat_id: action.chatId })
+        await ctx.repository.registerFile(action.eventId, { id: newFileId(), message_id: action.messageId, file_key: action.fileKey, file_name: action.fileName, uploader_open_id: action.openId, chat_id: action.chatId,
+          first_download_notification: Number(env.firstDownloadNotification) })
         log('file_registered_pending')
       } else {
         await ctx.repository.createCommand(action.eventId, { id: `command:${action.messageId}`, message_id: action.messageId, uploader_open_id: action.openId, chat_id: action.chatId, argument: action.argument })

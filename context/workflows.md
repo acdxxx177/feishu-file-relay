@@ -19,6 +19,12 @@ Handle the Feishu URL challenge promptly. Verify callback authenticity and repla
 5. File System Access writes await backpressure at absolute offsets, rolls failed chunks back, and commits only after verification and close. Blob mode has a hard 20 MiB limit. Cancellation or exhausted retries aborts tentative output. In-session automatic recovery is distinct from restarting after a terminal failure, refresh or browser restart.
 6. GET/HEAD /f/:id/download preserves the old binary Range/If-Range path and its known Free CPU limitation. Page/metadata/chunk responses use no-store. Raw successes retain private,no-cache. Page opens never count; browser offset-zero chunks count after successful forwarding, and repeated zero-offset requests can overcount.
 
+## First confirmed download (VPS)
+
+The opt-in notification applies only to files registered while the feature is enabled. Browser sessions track complete canonical ranges in bounded process memory, separately from approximate download counters. Native saves report after successful close; Blob saves report only after full assembly and a trusted Save activation. Raw downloads, partial ranges, HEAD, metadata and prefetch never trigger the notification. Successful in-session recovery may qualify after whole-file completion.
+
+An atomic primary D1 insert under `first-download:card:<fileId>` freezes the first accepted confirmation and queues one historical card to the uploader's original chat. Retain the row in every delivery state. Same-UUID retries stop when an ambiguous send exceeds the provider window. Session loss before persistence may omit a notification; persisted jobs recover through the existing scheduler. Only proxy-verified country/region/city are stored, never IPs. See the [operating guide](../docs/first-download-notifications.md) for the approved completion limits and rollout sequence.
+
 ## Recall and failures
 
 Record recall by original message ID using the [domain rules](domain.md). Once committed, all subsequent GET and HEAD requests for the recalled file return 410 without reading the origin. Cache cleanup can run asynchronously and may fail without weakening revocation. An in-flight transfer may already have sent bytes.

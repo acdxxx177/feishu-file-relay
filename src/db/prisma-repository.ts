@@ -1,6 +1,6 @@
 import { PrismaClient, type Prisma } from '../generated/prisma/client'
 import type { FileRecord } from '../types'
-import type { BotJob, Command, PendingFile, Registration, RelayRepository } from './repository'
+import type { BotJob, Command, FirstDownloadSnapshot, PendingFile, Registration, RelayRepository } from './repository'
 import { unsentCardPrefix } from './repository'
 import { D1HttpTransport, type D1HttpOptions, type Statement } from './d1-http'
 import { RelayPrismaD1Adapter } from './prisma-d1-adapter'
@@ -19,6 +19,7 @@ function fileRecord(row: Prisma.FileGetPayload<Record<string, never>>): PendingF
     chat_id: row.chatId, version: row.version, status: row.status as FileRecord['status'],
     fail_reason: row.failReason, delete_reason: row.deleteReason, attempts: row.attempts,
     download_count: safeNumber(row.downloadCount), last_downloaded_at: row.lastDownloadedAt,
+    first_download_notification: row.firstDownloadNotification,
     created_at: row.createdAt, updated_at: row.updatedAt, deleted_at: row.deletedAt,
     next_attempt_at: safeNumber(row.nextAttemptAt), lease_until: safeNumber(row.leaseUntil),
   }
@@ -93,6 +94,56 @@ export class PrismaRelayRepository implements RelayRepository {
     await this.transport.download(() => this.client.file.updateMany({ where: { id, status: 'active' }, data: { downloadCount: { increment: 1 }, lastDownloadedAt: utcText() } }))
   }
 
+  async recordFirstDownload(id: string, version: number, snapshot: FirstDownloadSnapshot): Promise<boolean> {
+    const argument = JSON.stringify({ schema: 1, fileName: '', confirmedAt: snapshot.confirmedAt,
+      method: snapshot.method, location: { country: snapshot.location.country, region: snapshot.location.region, city: snapshot.location.city } })
+    // 唯一任务本身就是永久的首次确认记录；状态和收件人取自同一次原子写入中的文件记录。
+    return this.transport.download(async () => {
+      const [, found] = await this.transport.batch([
+        statement(`INSERT OR IGNORE INTO bot_jobs(id,kind,file_id,uploader_open_id,chat_id,argument)
+          SELECT 'first-download:card:'||id,'notification',id,uploader_open_id,chat_id,
+            json_object('snapshot',json_set(json(?),'$.fileName',file_name),'delivery','unsent')
+          FROM files WHERE id=? AND version=? AND status='active' AND first_download_notification=1`, argument, id, version),
+        statement("SELECT id FROM bot_jobs WHERE id=? AND file_id=?", `first-download:card:${id}`, id),
+      ])
+      return found.results.length === 1
+    })
+  }
+
+  async beginFirstDownloadNotification(job: BotJob): Promise<boolean> {
+    this.assertFirstDownloadJob(job)
+    // 每次网络发送前验证当前租约；未知结果不得恢复为 unsent，也不能靠文件状态取消历史事件。
+    const result = await this.transport.query(statement(`UPDATE bot_jobs
+      SET argument=json_set(argument,'$.delivery','uncertain') WHERE ${claimedJob} AND argument=? AND lease_until>?`,
+    job.id, job.attempts, job.lease_until, job.argument, Date.now() + 45_000))
+    return result.meta.changes === 1
+  }
+
+  async retryFirstDownloadNotification(job: BotJob, knownUnsent: boolean, reason: string): Promise<void> {
+    this.assertFirstDownloadJob(job)
+    const state = job.attempts >= 8 ? 'failed' : 'pending'
+    await this.transport.query(statement(`UPDATE bot_jobs SET state=?,lease_until=0,next_attempt_at=?,
+      argument=json_set(argument,'$.delivery',?,'$.failureReason',?) WHERE ${claimedJob}`,
+    state, Date.now() + Math.min(60_000 * 2 ** job.attempts, 3_600_000), knownUnsent ? 'unsent' : 'uncertain',
+    reason, job.id, job.attempts, job.lease_until))
+  }
+
+  async finishFirstDownloadNotification(job: BotJob, messageId: string): Promise<void> {
+    this.assertFirstDownloadJob(job)
+    if (!messageId) throw new Error('Missing first download receipt')
+    await this.transport.query(completeJob(job, 'sent', messageId))
+  }
+
+  async failFirstDownloadNotification(job: BotJob, reason: string): Promise<void> {
+    this.assertFirstDownloadJob(job)
+    await this.transport.query(statement(`UPDATE bot_jobs SET state='failed',lease_until=0,
+      argument=json_set(argument,'$.failureReason',?) WHERE ${claimedJob}`, reason, job.id, job.attempts, job.lease_until))
+  }
+
+  private assertFirstDownloadJob(job: BotJob): void {
+    if (!job.file_id || job.id !== `first-download:card:${job.file_id}` || job.kind !== 'notification') throw new Error('Invalid first download job')
+  }
+
   async revokeFile(id: string, uploader: string, allowAdmin = false): Promise<boolean> {
     const result = await this.transport.batch([
       statement(`UPDATE files SET status='deleted',delete_reason='revoked',deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
@@ -120,10 +171,10 @@ export class PrismaRelayRepository implements RelayRepository {
 
   async registerFile(eventId: string, file: Registration): Promise<void> {
     await this.transport.batch([
-      statement(`INSERT INTO files(id,message_id,file_key,file_name,uploader_open_id,chat_id)
-        SELECT ?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM recalled_messages WHERE message_id=?)
+      statement(`INSERT INTO files(id,message_id,file_key,file_name,uploader_open_id,chat_id,first_download_notification)
+        SELECT ?,?,?,?,?,?,? WHERE NOT EXISTS(SELECT 1 FROM recalled_messages WHERE message_id=?)
         AND NOT EXISTS(SELECT 1 FROM processed_events WHERE event_id=?) ON CONFLICT(message_id) DO NOTHING`,
-      file.id, file.message_id, file.file_key, file.file_name, file.uploader_open_id, file.chat_id, file.message_id, eventId),
+      file.id, file.message_id, file.file_key, file.file_name, file.uploader_open_id, file.chat_id, file.first_download_notification ?? 0, file.message_id, eventId),
       statement('INSERT OR IGNORE INTO processed_events(event_id) VALUES(?)', eventId),
     ])
   }

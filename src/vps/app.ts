@@ -10,9 +10,14 @@ import { presentPageError, securityHeaders } from '../lib/download-page-response
 import { handleWebhook } from './intake'
 import { createScheduler } from './scheduler'
 import { trustedProxyCheck } from './trusted-proxy'
+import { DownloadSessions } from './download-sessions'
+import { createLocationReader } from './download-location'
 
 export function createApplication(config: Config, repository: RelayRepository, feishu: FeishuClient) {
   const scheduler = createScheduler(config, repository, feishu)
+  const sessions = new DownloadSessions({ enabled: config.firstDownloadNotification, origin: config.PUBLIC_BASE_URL,
+    repository, wake: () => scheduler.context.wake() })
+  const location = createLocationReader(config)
   const downloads = createDownloadHandlers({ repository: {
     getFile: (id) => repository.getDownloadFile(id),
     countDownload: (id) => repository.countDownload(id),
@@ -20,6 +25,7 @@ export function createApplication(config: Config, repository: RelayRepository, f
   }, fetchResource: feishu.fetchResource,
     readTimeoutMs: Number(config.UPSTREAM_READ_TIMEOUT_MS), cacheEnabled: config.cacheEnabled,
     onUnavailable: () => scheduler.context.wake(),
+    sessions,
   })
   const app = new Hono<{ Bindings: HttpBindings }>()
   let stopping = false
@@ -87,6 +93,8 @@ export function createApplication(config: Config, repository: RelayRepository, f
   app.on(['GET', 'HEAD'], '/f/:id', (c) => c.req.method === 'HEAD' ? downloads.raw(c.req.raw, c.req.param('id')) : downloads.page(c.req.raw, c.req.param('id')))
   app.on(['GET', 'HEAD'], '/api/files/:id/chunk', (c) => downloads.chunk(c.req.raw, c.req.param('id')))
   app.get('/api/files/:id', (c) => downloads.page(c.req.raw, c.req.param('id'), true))
+  app.post('/api/files/:id/download-session', (c) => sessions.start(c.req.raw, c.req.param('id')))
+  app.post('/api/files/:id/download-complete', (c) => sessions.complete(c.req.raw, c.req.param('id'), location(c.req.raw, c.env?.incoming?.socket.remoteAddress)))
   app.notFound(() => new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } }))
   app.onError((_failure, c) => { console.error(JSON.stringify({ event: 'request_failed' })); return presentPageError(c.req.raw, error(503)) })
   return { app, scheduler, stop() { stopping = true; scheduler.stop() }, get activeDownloads() { return active } }
