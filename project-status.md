@@ -1,5 +1,15 @@
 # Project status
 
+## Chromium CI startup diagnostics and Linux compatibility prepared locally (2026-11-06)
+
+Release follow-up: the user now authorizes committing and pushing the correction to `main`, waiting for that exact commit's CI to succeed, then creating and pushing a new `v1.2.2` tag. Do not move `v1.2.1`. Remote verification and publication remain pending at this preparation stage; VPS deployment is not authorized.
+
+The `v1.2.1` and `main` runs for `f10ce35d518a5e5b1bb31576e5601288ce2f676a` failed in the browser test: 101/102 tests passed and Chromium did not expose its isolated debugging endpoint. Typecheck passed; health, large-file, container and publication stages did not run. Proxy/geolocation regressions passed. The old launcher discarded stderr, so the precise browser startup cause remains unconfirmed; Linux sandbox restrictions are a compatibility hypothesis, not an observed CI error.
+
+The local correction captures a bounded stderr tail, reports spawn failures/exit status promptly, waits up to 30 seconds for the isolated endpoint, and terminates remaining test browser processes during cleanup. Only the CI test step sets `CHROME_NO_SANDBOX=1` for Linux and `REQUIRE_BROWSER=1` to prevent silent browser-test skips. Non-root local runs keep the sandbox by default; no runner-wide security setting or application/container runtime changes are introduced.
+
+Validation: VPS/test TypeScript compilation passed; `pnpm test` passed 106/106 with zero skips, including the real Windows Chromium flow and two saved 20 MiB hashes. The four new startup-process regressions also passed under WSL Linux, covering stderr/early exit, missing executable, timeout/cleanup and endpoint readiness. WSL has no Linux browser installed, so this is process-helper evidence, not a Linux real-browser or recovered CI claim. The correction is local and uncommitted; no push, replacement tag, image publication or VPS change occurred. Remote verification requires a subsequent push. See [verification log](docs/verification-log.md).
+
 ## Proxy IP allowlist removed locally (2026-11-06)
 
 Release preparation: the user subsequently authorized committing these changes, creating annotated patch tag `v1.2.1`, and pushing the branch and tag. The existing tag workflow runs CI before GHCR publication; this entry does not claim that remote validation or publication has completed. VPS deployment remains outside this authorization.

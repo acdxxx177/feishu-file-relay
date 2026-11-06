@@ -30,6 +30,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm test
+        env:
+          REQUIRE_BROWSER: '1'
+          # 仅本地夹具浏览器使用；不改变 runner 内核、应用镜像或生产配置。
+          CHROME_NO_SANDBOX: '1'
       - run: pnpm check:health
       - run: pnpm test:large
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3

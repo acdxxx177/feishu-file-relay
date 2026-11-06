@@ -1,5 +1,24 @@
 # 验证日志
 
+## Chromium CI 启动失败：本地兼容与诊断修正（2026-11-06）
+
+后续发布授权：先提交修复并推送 `main`，等待该提交的 CI 成功后再创建和推送 `v1.2.2`。保留原 `v1.2.1` 标签，不移动或覆盖。本条记录仅说明发布顺序，远程验证和镜像发布结果待确认，不包含 VPS 部署。
+
+`v1.2.1` 的[发布运行](https://github.com/acdxxx177/feishu-file-relay/actions/runs/42167624775)及同一提交的[main 运行](https://github.com/acdxxx177/feishu-file-relay/actions/runs/42167624794)均在 `pnpm test` 失败：102 项中 101 项通过，唯一失败为 `browser-ui.test.ts`，错误为 `Chromium did not expose its isolated debugging endpoint`。类型检查通过，代理白名单移除及地理位置测试通过；后续镜像发布跳过。Node.js 弃用信息不是此次失败点。
+
+原测试只给 Linux root 进程添加 `--no-sandbox`，并将浏览器标准错误丢弃；现有日志无法确认具体退出原因。此次添加显式测试开关 `CHROME_NO_SANDBOX=1`，仅由 CI 的 `pnpm test` 步骤设置，兼容受限 Linux 沙箱环境，不改系统 AppArmor 或生产镜像。Linux 沙箱限制仍是待 CI 复验的可能原因，参考 [Chromium 官方说明](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md)。
+
+测试启动器保留最多 8192 字符的错误尾部，报告可执行文件、启动错误、退出码和信号；进程提前退出时及时失败，最长等待 30 秒调试端口。测试结束先终止浏览器，必要时在五秒后强制结束，再清理专属临时目录。CI 同时设置 `REQUIRE_BROWSER=1`，浏览器缺失会失败而非跳过；没有取消原有真实保存、哈希或回调断言。
+
+| 检查 | 结果 |
+| --- | --- |
+| `pnpm exec tsc -p tsconfig.vps.json` | 通过，包含测试与辅助模块 |
+| `pnpm test` | 106/106 通过，零失败、零跳过 |
+| Windows 真实 Chromium 保存 | 两次 20 MiB 保存及 SHA-256 校验通过 |
+| WSL Linux 启动进程回归 | 4/4 通过，覆盖提前退出及有界 stderr、缺失程序、超时清理、端口文件就绪 |
+
+WSL 使用已有 Node 24 将新启动测试打包后运行，系统未安装 Linux 浏览器，因此不将这些进程回归当作 Linux 浏览器验收。未重跑大文件专项、Docker 或生产验收。修正尚未提交/推送；GitHub CI 和镜像发布尚未恢复验证，不能通过重新运行旧 `v1.2.1` 标签来使用本地新代码。生产配置和服务未变更。
+
 ## 移除代理来源 IP 白名单（2026-11-06）
 
 发布准备：用户随后授权提交代码、创建附注标签 `v1.2.1` 并推送。该标签会触发现有 CI 验证及通过后的 GHCR 发布；下列结果仍为本地验证证据，不代表远程构建或镜像发布已完成。本次不包含 VPS 部署。

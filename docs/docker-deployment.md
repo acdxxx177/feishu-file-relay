@@ -65,6 +65,10 @@ docker compose --env-file .env.docker exec -T relay node -e "fetch('http://127.0
 
 将仓库推送到 GitHub 后工作流自动生效；当前配置不替你创建远程仓库。`main` 更新与 PR 运行类型检查、测试、大文件完整性和 Linux AMD64 镜像测试，不发布镜像。标签 `v*` 和手动触发先通过同样验证，再发布：
 
+浏览器测试步骤设置 `REQUIRE_BROWSER=1`，缺少 Chromium 时直接失败，不静默跳过。该步骤同时设置 `CHROME_NO_SANDBOX=1`，使 Linux 测试浏览器使用 `--no-sandbox` 兼容限制用户命名空间的 runner；仅访问回环夹具，不改变系统 AppArmor、生产应用或镜像配置。其他本地非 root 环境默认保留沙箱。相关限制参见 [Chromium 官方说明](https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md)。
+
+遇到浏览器启动失败，检查测试输出中的可执行文件路径、退出码和 `Chromium stderr`。测试最多等待 30 秒取得独立调试端口，进程提前退出则立即报错；错误输出只保留有界尾部。`Chromium did not expose its isolated debugging endpoint` 这类旧日志仅能证明端口未出现，不能单独证明沙箱是原因。修复工作流或测试后必须提交新代码再运行；重新运行旧标签仍使用旧代码，正式重发应使用新的版本标签。
+
 | 触发方式 | 发布标签 |
 | --- | --- |
 | `v1.2.3` | `1.2.3`、`sha-<完整提交号>`、`latest` |

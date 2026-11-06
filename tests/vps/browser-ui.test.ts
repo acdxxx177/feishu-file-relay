@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { once } from 'node:events'
 import { existsSync } from 'node:fs'
@@ -16,6 +15,7 @@ import { createApplication } from '../../src/vps/app'
 import { readConfig } from '../../src/vps/config'
 import { createFeishuClient } from '../../src/vps/feishu'
 import { databaseFixture } from './database-fixture'
+import { startBrowser } from './browser-process'
 
 const browser = [
   process.env.CHROME_PATH,
@@ -25,16 +25,7 @@ const browser = [
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
 ].find((path): path is string => !!path && existsSync(path))
 
-async function connectBrowser(profile: string) {
-  let endpoint: string | undefined
-  for (let attempt = 0; attempt < 200; attempt++) {
-    try {
-      const [port, path] = (await readFile(join(profile, 'DevToolsActivePort'), 'utf8')).trim().split('\n')
-      endpoint = `ws://127.0.0.1:${Number(port)}${path}`
-      break
-    } catch { await delay(50) }
-  }
-  assert.ok(endpoint, 'Chromium did not expose its isolated debugging endpoint')
+async function connectBrowser(endpoint: string) {
   const socket = new WebSocket(endpoint)
   await once(socket, 'open')
   let nextId = 0
@@ -71,8 +62,9 @@ async function connectBrowser(profile: string) {
 }
 
 test('served download UI preserves active transfers, localization and Blob limits in Chromium', {
-  skip: browser ? false : 'Set CHROME_PATH to run the real-browser test', timeout: 150_000,
+  skip: browser || process.env.REQUIRE_BROWSER === '1' ? false : 'Set CHROME_PATH to run the real-browser test', timeout: 150_000,
 }, async (t) => {
+  assert.ok(browser, 'Chromium is required; install it or set CHROME_PATH to an existing browser executable')
   const sizes = { transfer: 8, blob: 20 * 1024 * 1024, saveFailure: 8, oversized: 20 * 1024 * 1024 + 1 }
   const scenarios = Object.keys(sizes) as (keyof typeof sizes)[]
   const filename = '共享-साझा-instrucciones <final>.zip'
@@ -133,16 +125,15 @@ test('served download UI preserves active transfers, localization and Blob limit
   const downloadDirectory = await mkdtemp(join(tmpdir(), 'relay-browser-download-'))
   const args = ['--headless', '--disable-gpu', '--disable-background-networking', '--no-first-run', '--no-default-browser-check',
     '--disable-features=Translate,MediaRouter', '--remote-debugging-port=0', '--user-data-dir=' + profile]
-  if (process.platform === 'linux' && process.getuid?.() === 0) args.push('--no-sandbox')
-  const child = spawn(browser!, [...args, 'http://127.0.0.1:' + address.port + pathFor('transfer')], { windowsHide: true, stdio: 'ignore' })
-  const closed = once(child, 'close')
+  // 隔离 CI 的内核可能禁止非特权用户命名空间；仅测试步骤显式关闭浏览器沙箱。
+  if (process.platform === 'linux' && (process.getuid?.() === 0 || process.env.CHROME_NO_SANDBOX === '1')) args.push('--no-sandbox')
+  const child = startBrowser(browser, [...args, 'http://127.0.0.1:' + address.port + pathFor('transfer')])
   t.after(async () => {
-    child.kill()
-    await closed
+    await child.stop()
     await rm(profile, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 })
     await rm(downloadDirectory, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 })
   })
-  const cdp = await connectBrowser(profile)
+  const cdp = await connectBrowser(await child.endpoint(profile))
   t.after(() => cdp.close())
   await cdp.send('Browser.setDownloadBehavior', { behavior: 'allowAndName', downloadPath: downloadDirectory, eventsEnabled: true })
   const { targetInfos } = await cdp.send('Target.getTargets')
@@ -158,7 +149,7 @@ test('served download UI preserves active transfers, localization and Blob limit
   keyboardReady()
   const timer = setTimeout(() => fail(new Error('Timed out waiting for browser at ' + scenarios[completed.length])), 120_000)
   try {
-    await Promise.race([done, closed.then(([code]) => { throw new Error('Chromium exited before completing tests: ' + code) })])
+    await Promise.race([done, child.closed.then(() => { throw child.failure('Chromium exited before completing tests') })])
   } finally { clearTimeout(timer) }
   assert.deepEqual(completed, scenarios)
   assert.equal(mock.ranges.filter(read => read.key === 'oversized').length, 0)
