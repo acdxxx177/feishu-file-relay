@@ -1,5 +1,17 @@
 # 验证日志
 
+## v1.2.2：VPS 部署完成（2026-11-06）
+
+经用户明确授权，已于北京时间 16:31 将 VPS 中转服务由 `1.2.0` 升级到 `1.2.2`。先拉取并核对镜像，再备份 `/root/web/docker-compose.yaml`，仅替换其中的中转镜像版本；执行 `docker compose up -d --no-deps --no-build --pull never feishurelay`。备份目录为 `/root/web/feishu-relay/backups/20261106T083100Z-v1.2.2`，包含旧 Compose 和不含凭据的部署前镜像、容器与配置校验记录。旧镜像保留，可按旧版本重建中转服务回滚。
+
+- 拉取的 OCI index 为 `sha256:272d37745f8e8c6db4ebd266fd021ccf2461d7fdcfdb6857d15c5fb1b5a1d1c3`，运行镜像 ID 为 `sha256:7d2cab73484c8a42f02b6b82dae6a5a30456bc21505db194d397d3cb9822768f`，revision 为 `67e83568b913692b42b46d2d9c00a06ff3691b68`，均与发布记录一致。
+- 新容器 `healthy`、重启次数为 0，两次 Docker 健康探测退出码均为 0；检查时无启动错误日志。
+- 内部 `/health`、D1 就绪 `/ready` 均返回 200；公网 HTTPS `/health` 返回 200，携带伪造回环 `X-Real-IP` 的公网 `/ready` 仍返回 404。
+- Compose 配置校验通过；Nginx 与 Xray 容器 ID 未变，`env.conf` 和 Nginx 配置的 SHA-256 与部署前一致。
+- 代理信任、地理信任、首次下载通知开关保持开启。旧 `TRUSTED_PROXY_IPS` 无需删除，新镜像直接忽略；未执行数据库迁移或手动写入数据。
+
+本次未发送真实飞书消息或注册测试文件。实际新文件完整下载后的通知及位置仍需客户端验收，已有通知的位置快照不会补写。
+
 ## v1.2.2：main 验证通过后发布标签及镜像（2026-11-06）
 
 按用户要求先提交修复 `67e83568b913692b42b46d2d9c00a06ff3691b68` 并推送 `main`，等待 [main CI 42186775001](https://github.com/acdxxx177/feishu-file-relay/actions/runs/42186775001) 全部成功后，才在同一提交创建附注标签 `v1.2.2` 并推送。原 `v1.2.1` 仍指向 `f10ce35d518a5e5b1bb31576e5601288ce2f676a`，没有移动或覆盖。[标签流程 42187107162](https://github.com/acdxxx177/feishu-file-relay/actions/runs/42187107162) 的验证和 GHCR 发布随后均成功。

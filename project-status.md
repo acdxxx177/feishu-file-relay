@@ -1,5 +1,11 @@
 # Project status
 
+## v1.2.2 deployed to the VPS (2026-11-06)
+
+The user explicitly authorized production deployment after publication. At 08:31 UTC, `/root/web/docker-compose.yaml` was backed up to `/root/web/feishu-relay/backups/20261106T083100Z-v1.2.2/docker-compose.yaml`; only the relay image reference changed from `1.2.0` to `1.2.2`. Compose recreated only `feishurelay` with `--no-deps --no-build --pull never`. The pulled OCI index and running image ID match the published digests below. The old image remains available for rollback.
+
+Verified: Docker healthy with zero restarts and two successful health probes; internal `/health` and D1-backed `/ready` returned 200; public HTTPS `/health` returned 200 and `/ready` returned 404 even with a forged loopback `X-Real-IP`. Compose validation passed and the new container emitted no startup log errors during inspection. Nginx and Xray container IDs are unchanged; environment and Nginx configuration SHA-256 values are unchanged. All three proxy/geographic/notification switches remain enabled; stale `TRUSTED_PROXY_IPS` is left in place and ignored by the new binary. No schema migration or manual data write was performed. Real-client new-download location acceptance remains pending; historical notification snapshots are not rewritten. See [verification log](docs/verification-log.md).
+
 ## v1.2.2 published after successful main CI (2026-11-06)
 
 Fix commit `67e83568b913692b42b46d2d9c00a06ff3691b68` was pushed to `main` first. [Main CI 42186775001](https://github.com/acdxxx177/feishu-file-relay/actions/runs/42186775001) completed successfully before annotated tag `v1.2.2` was created at that exact commit and pushed, following the user's requested release order. The earlier `v1.2.1` tag remains at `f10ce35d518a5e5b1bb31576e5601288ce2f676a`. [Tag CI/publication 42187107162](https://github.com/acdxxx177/feishu-file-relay/actions/runs/42187107162) subsequently passed both verification and GHCR publication.
