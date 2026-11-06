@@ -43,14 +43,14 @@ async function harness(overrides: Partial<Config> = {}, prepare?: (f: ReturnType
   assert.ok(address && typeof address !== 'string')
   const base = `http://127.0.0.1:${address.port}`
   const request = (path: string, init?: RequestInit) => fetch(base + path, init)
-  async function post(payload: unknown, options: { encrypted?: boolean; badSignature?: boolean; stale?: boolean } = {}) {
+  async function post(payload: unknown, options: { encrypted?: boolean; badSignature?: boolean; stale?: boolean; timestamp?: string } = {}) {
     let body = JSON.stringify(payload)
     if (options.encrypted) {
       const iv = randomBytes(16)
       const cipher = createCipheriv('aes-256-cbc', createHash('sha256').update(encryptKey).digest(), iv)
       body = JSON.stringify({ encrypt: Buffer.concat([iv, cipher.update(body), cipher.final()]).toString('base64') })
     }
-    const timestamp = String(Math.floor(Date.now() / 1000) - (options.stale ? 1000 : 0))
+    const timestamp = options.timestamp ?? String(Math.floor(Date.now() / 1000) - (options.stale ? 1000 : 0))
     const nonce = 'nonce'
     const signature = createHash('sha256').update(timestamp + nonce + encryptKey + body).digest('hex')
     return request('/webhook/feishu', { method: 'POST', body, headers: { 'Content-Type': 'application/json',
@@ -200,6 +200,33 @@ function cardClick(fileId: string, messageId: string, operator = 'owner', chat =
     event: { host: 'im_message', operator: { open_id: operator }, context: { open_message_id: messageId, open_chat_id: chat },
       action: { tag: 'button', name: 'revoke_share', value: { action: 'revoke_file', file_id: fileId, open_id: 'owner' } } } }
 }
+
+test('signed encrypted card with an opaque timestamp header revokes and patches the original card', async () => {
+  const h = await harness()
+  try {
+    const file = await h.register('opaque-timestamp')
+    const receipt = () => h.db.prepare("SELECT message_id FROM bot_jobs WHERE file_id=? AND state='sent'").get(file.id)?.message_id as string | undefined
+    await eventually(() => Boolean(receipt()))
+    const cardId = receipt()!
+    // 线上已确认该头不是数字；此处使用合成值，不保存真实回调数据。
+    const options = { encrypted: true, timestamp: 'opaque timestamp +0800 m=+123.456' }
+    const click = cardClick(file.id, cardId)
+    const rejected = await h.post(click, { ...options, badSignature: true })
+    assert.equal(rejected.status, 401)
+    assert.equal(h.row('opaque-timestamp')?.status, 'active')
+    const response = await h.post(click, options)
+    assert.equal(response.status, 200)
+    assert.equal((await response.json()).toast.type, 'success')
+    assert.equal(h.row('opaque-timestamp')?.status, 'deleted')
+    const duplicate = await h.post(click, options)
+    assert.equal(duplicate.status, 200)
+    assert.equal((await duplicate.json()).toast.type, 'info')
+    await eventually(() => h.mock.updates.length === 1)
+    assert.equal(h.mock.updates[0].messageId, cardId)
+    assert.equal(JSON.parse(h.mock.updates[0].content).header.title.content, '文件分享已撤销')
+    assert.equal((await h.request(`/f/${file.id}`, { method: 'HEAD' })).status, 410)
+  } finally { await h.close() }
+})
 
 test('encrypted card callback binds the owner, source chat and original card and patches only that card', async () => {
   const h = await harness({ FEISHU_INTAKE_POLICY: 'allowlist', ALLOWED_OPEN_IDS: 'owner,admin', ADMIN_OPEN_IDS: 'admin' })

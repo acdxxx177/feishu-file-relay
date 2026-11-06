@@ -42,7 +42,10 @@ export async function decodeAndVerify(raw: string, request: Request, env: Config
   if (!Number.isFinite(skew) || skew <= 0 || !recent(header.create_time, skew)) throw new Error('Expired event')
   if (header.app_id !== env.FEISHU_APP_ID) throw new Error('Wrong application')
   const timestamp = request.headers.get('X-Lark-Request-Timestamp')
-  if (timestamp !== null && !recent(timestamp, skew)) throw new Error('Expired request')
+  // 新版卡片的签名时间戳可能不是数字，必须按原字符串验签。
+  // 仅在要求签名的卡片回调中使用正文 create_time 防重放；正文同样受签名保护。
+  const signedCard = Boolean(env.FEISHU_ENCRYPT_KEY) && body.schema === '2.0' && header.event_type === 'card.action.trigger'
+  if (!signedCard && timestamp !== null && !recent(timestamp, skew)) throw new Error('Expired request')
   if (env.FEISHU_ENCRYPT_KEY) {
     const nonce = request.headers.get('X-Lark-Request-Nonce')
     const signature = request.headers.get('X-Lark-Signature')

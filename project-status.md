@@ -1,12 +1,20 @@
 # Project status
 
+## Confirmed VPS card callback HTTP 401 cause (2026-11-06)
+
+For PRD F08 and §§8.1/8.4, authorized read-only SSH diagnostics confirmed that the target VPS runs the v1.1.1 image. Nginx recorded HTTP 401 for user-confirmed test-card clicks at 01:31:42 and 01:34:02 UTC, and HTTP 200 for an ordinary message at 01:31:53 UTC. Memory-only callback inspection confirmed successful decryption, matching token/app ID and signature, and a fresh microsecond body timestamp (about 1–2 seconds old). The card's request timestamp header was nonnumeric; the old numeric-header freshness check rejected it before signature verification. The actual callback included the expected button name, so the earlier optional-name fix did not address this observed failure. The exact header string and raw callback were not retained.
+
+The local fix treats the request timestamp as an opaque signature input only for signed modern card callbacks. Mandatory signature inputs, exact-body verification, token/app validation and the signed body's five-minute freshness check remain enforced; ordinary-event checks are unchanged. See the [runtime contract](src/vps/context/runtime.md) and [Chinese troubleshooting guide](docs/vps-deployment.md). No production settings, image, database or application code were modified during this diagnosis. Both temporary diagnostic processes exited. Post-fix release, deployment and real-client acceptance remain pending.
+
+Validation: the new auth regression reproduced `Expired request` before the fix; all 19 targeted auth/HTTP tests, `pnpm typecheck` and all 72 tests in `pnpm test` passed afterward, with zero skips. Independent read-only review found no blocker. Synthetic headers model the observed nonnumeric property without copying production data. Large-file and Worker suites were not rerun for this VPS-only authentication change; their previous results above/below are historical evidence, not a new acceptance claim.
+
 ## VPS card callback HTTP 400 investigation (2026-11-06)
 
 For PRD F08 and §8.4, the reported Feishu client error 200671 identifies a non-200 webhook response. A local signed request modeled on Feishu's documented button callback reproduced HTTP 400 in v1.1.0 when `event.action.name` was omitted. The VPS parser now accepts omission while rejecting a supplied, incorrect button name. Existing action type, file, actor, original card, chat and signature checks still apply. The isolated HTTP regression reproduced 400 before the change and passed afterward. VPS typecheck and all 65 regular VPS tests passed with zero skips.
 
-Public endpoint diagnostics from this workstation returned 200 for health and 401 for an unsigned empty webhook request. The actual click's HTTP status/body and real-client validation are pending.
+Public endpoint diagnostics from this workstation returned 200 for health and 401 for an unsigned empty webhook request. Actual click evidence was pending at this stage; the later VPS investigation above establishes the HTTP 401 cause.
 
-Tag `v1.1.1` points to fix commit `8747a831c573bce9d85aad57bc7a0b004a435ba3`. Verification and publication succeeded in [GitHub Actions run 42132870650](https://github.com/acdxxx177/feishu-file-relay/actions/runs/42132870650). Anonymous GHCR reads confirmed the `1.1.1`, `latest` and commit-specific tags all serve OCI index `sha256:c1d9974358e603cbd5e7f55b38098aeddc67b96185b019df934d1c9bb06cb02f` with a Linux AMD64 image. Deployment and Feishu client verification are pending.
+Tag `v1.1.1` points to fix commit `8747a831c573bce9d85aad57bc7a0b004a435ba3`. Verification and publication succeeded in [GitHub Actions run 42132870650](https://github.com/acdxxx177/feishu-file-relay/actions/runs/42132870650). Anonymous GHCR reads confirmed the `1.1.1`, `latest` and commit-specific tags all serve OCI index `sha256:c1d9974358e603cbd5e7f55b38098aeddc67b96185b019df934d1c9bb06cb02f` with a Linux AMD64 image. Subsequent read-only VPS inspection confirmed deployment; real clicks still returned 401 as documented above.
 
 ## VPS card image published (2026-11-06)
 
