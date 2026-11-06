@@ -1,5 +1,13 @@
 # Project status
 
+## v1.2.2 published after successful main CI (2026-11-06)
+
+Fix commit `67e83568b913692b42b46d2d9c00a06ff3691b68` was pushed to `main` first. [Main CI 42186775001](https://github.com/acdxxx177/feishu-file-relay/actions/runs/42186775001) completed successfully before annotated tag `v1.2.2` was created at that exact commit and pushed, following the user's requested release order. The earlier `v1.2.1` tag remains at `f10ce35d518a5e5b1bb31576e5601288ce2f676a`. [Tag CI/publication 42187107162](https://github.com/acdxxx177/feishu-file-relay/actions/runs/42187107162) subsequently passed both verification and GHCR publication.
+
+Main CI passed typecheck, all 106 regular tests with zero skips, Hono health, all three 100/500/1024 MiB full/resumed SHA-256 tests, Linux AMD64 image build and all three required Docker tests with zero skips. The real Linux Chromium flow completed two 20 MiB saves with matching hashes. This confirms recovery of the CI browser path; the old run's discarded stderr still prevents retrospective proof of its precise sandbox failure.
+
+Anonymous GHCR manifest reads and local SHA-256 calculation verified that `1.2.2`, `latest` and `sha-67e83568b913692b42b46d2d9c00a06ff3691b68` all resolve to OCI index `sha256:272d37745f8e8c6db4ebd266fd021ccf2461d7fdcfdb6857d15c5fb1b5a1d1c3`. The Linux AMD64 image has config digest `sha256:7d2cab73484c8a42f02b6b82dae6a5a30456bc21505db194d397d3cb9822768f` and the expected source revision label. No VPS file, service or database was changed. Deployment and real-client location acceptance remain separate operator steps. See [verification log](docs/verification-log.md).
+
 ## Chromium CI startup diagnostics and Linux compatibility prepared locally (2026-11-06)
 
 Release follow-up: the user now authorizes committing and pushing the correction to `main`, waiting for that exact commit's CI to succeed, then creating and pushing a new `v1.2.2` tag. Do not move `v1.2.1`. Remote verification and publication remain pending at this preparation stage; VPS deployment is not authorized.
