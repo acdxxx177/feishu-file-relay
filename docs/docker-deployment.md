@@ -47,9 +47,11 @@ curl --fail http://127.0.0.1:3000/health
 
 复用 [Nginx 模板](../deploy/nginx.conf)，将 `server_name` 和证书路径改为实际域名；如调整 `PUBLISHED_PORT`，同步修改 `proxy_pass`。必须覆盖 `X-Real-IP`，保持 `/ready` 公网 404，关闭缓存、响应缓冲、压缩和响应临时文件。HTTPS 证书与 DNS 不由容器配置管理。
 
-Compose 使用独立 bridge 网络，默认子网 `172.30.0.0/24`、网关 `172.30.0.1`，仅向宿主机 `127.0.0.1` 发布端口。`TRUSTED_PROXY_IPS` 留空时由 Compose 取 `DOCKER_GATEWAY`，不要把整个网段或任意代理设为可信。与已有网络冲突时同时修改 `DOCKER_SUBNET` 和 `DOCKER_GATEWAY`；若明确填写了 `TRUSTED_PROXY_IPS`，也需同步修改。
+Compose 使用独立 bridge 网络，默认子网 `172.30.0.0/24`、网关 `172.30.0.1`，仅向宿主机 `127.0.0.1` 发布端口。与已有网络冲突时同时修改 `DOCKER_SUBNET` 和 `DOCKER_GATEWAY`；这些网络参数不再参与应用的代理信任判断。
 
-应用只在 `TRUST_PROXY=true` 且 socket 来源为回环或列表内的 IP 时接受单个合法 `X-Real-IP`。列表支持逗号分隔 IPv4/IPv6，不支持 CIDR、域名或通配符；IPv4-mapped IPv6 可匹配对应 IPv4。其他转发头不参与限流。Docker rootless、Docker Desktop 或其他 NAT 拓扑的来源可能不同，应以目标 Linux VPS 实测为准，不要通过信任所有地址绕过问题。
+应用在 `TRUST_PROXY=true` 时接受任意连接来源的单个合法 `X-Real-IP`，缺失、无效或多值时退回 socket 地址；关闭或未设置该开关时只使用 socket 地址。其他转发头不参与限流。应用不再校验代理 IP，Docker 地址变化无需同步配置。能直连 Node 的调用者也能填写该头改变限流标识，这是本次明确接受的取舍；Nginx 仍应覆盖该头。
+
+`TRUSTED_PROXY_IPS` 已停用，环境示例、生成器和 Compose 不再输出它。旧部署保留任意旧值也会被新代码忽略，不必先修改服务器环境文件。新行为须构建并部署新版镜像后生效，仅修改旧镜像的配置无法取消校验。此次移除白名单不需要数据库迁移，实际镜像发布和生产部署仍需分别授权。
 
 `/ready` 始终只允许容器内部回环访问，检查方式：
 

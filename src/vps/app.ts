@@ -9,7 +9,6 @@ import { createDownloadHandlers } from './download'
 import { presentPageError, securityHeaders } from '../lib/download-page-response'
 import { handleWebhook } from './intake'
 import { createScheduler } from './scheduler'
-import { trustedProxyCheck } from './trusted-proxy'
 import { DownloadSessions } from './download-sessions'
 import { createLocationReader } from './download-location'
 
@@ -33,7 +32,6 @@ export function createApplication(config: Config, repository: RelayRepository, f
   let readiness: Promise<boolean> | undefined
   let readinessUntil = 0
   const clients = new Map<string, { start: number; count: number }>()
-  const isTrustedProxy = trustedProxyCheck(config.trustedProxyIps)
   const error = (status: number, retry = '10') => new Response(null, { status, headers: { ...Object.fromEntries(securityHeaders()), 'Retry-After': retry } })
   app.use('*', async (c, next) => {
     if (stopping && c.req.path !== '/health') return presentPageError(c.req.raw, error(503))
@@ -56,7 +54,8 @@ export function createApplication(config: Config, repository: RelayRepository, f
   app.use('*', async (c, next) => {
     if (!c.req.path.startsWith('/f/') && !c.req.path.startsWith('/api/files/')) return next()
     const remote = c.env?.incoming?.socket.remoteAddress ?? 'local'
-    const forwarded = config.trustProxy && isTrustedProxy(remote) ? c.req.header('X-Real-IP') : undefined
+    // 容器地址可能随网络重建改变；显式开启后按请求头识别访客，不再校验代理 IP。
+    const forwarded = config.trustProxy ? c.req.header('X-Real-IP') : undefined
     const ip = forwarded && isIP(forwarded) ? forwarded : remote
     const now = Date.now()
     for (const [key, value] of clients) if (now - value.start >= 60000) clients.delete(key)
@@ -94,7 +93,7 @@ export function createApplication(config: Config, repository: RelayRepository, f
   app.on(['GET', 'HEAD'], '/api/files/:id/chunk', (c) => downloads.chunk(c.req.raw, c.req.param('id')))
   app.get('/api/files/:id', (c) => downloads.page(c.req.raw, c.req.param('id'), true))
   app.post('/api/files/:id/download-session', (c) => sessions.start(c.req.raw, c.req.param('id')))
-  app.post('/api/files/:id/download-complete', (c) => sessions.complete(c.req.raw, c.req.param('id'), location(c.req.raw, c.env?.incoming?.socket.remoteAddress)))
+  app.post('/api/files/:id/download-complete', (c) => sessions.complete(c.req.raw, c.req.param('id'), location(c.req.raw)))
   app.notFound(() => new Response(null, { status: 404, headers: { 'Cache-Control': 'no-store' } }))
   app.onError((_failure, c) => { console.error(JSON.stringify({ event: 'request_failed' })); return presentPageError(c.req.raw, error(503)) })
   return { app, scheduler, stop() { stopping = true; scheduler.stop() }, get activeDownloads() { return active } }

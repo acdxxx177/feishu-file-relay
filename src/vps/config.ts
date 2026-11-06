@@ -1,5 +1,3 @@
-import { parseTrustedProxyIps } from './trusted-proxy'
-
 export interface Config {
   FEISHU_APP_ID: string
   FEISHU_APP_SECRET: string
@@ -26,7 +24,6 @@ export interface Config {
   trustProxy: boolean
   firstDownloadNotification: boolean
   trustCloudflareGeo: boolean
-  trustedProxyIps: string[]
   shutdownMs: number
   pollMs: number
 }
@@ -74,7 +71,6 @@ export function readConfig(env: NodeJS.ProcessEnv): Config {
     rateLimit: integer('DOWNLOAD_RATE_LIMIT', 60), trustProxy: boolean('TRUST_PROXY'),
     firstDownloadNotification: boolean('FIRST_DOWNLOAD_NOTIFICATION_ENABLED'),
     trustCloudflareGeo: boolean('TRUST_CLOUDFLARE_GEO'),
-    trustedProxyIps: parseTrustedProxyIps(env.TRUSTED_PROXY_IPS),
     shutdownMs: integer('SHUTDOWN_TIMEOUT_MS', 60000), pollMs: integer('JOB_POLL_MS', 15000, 1000),
   }
 }

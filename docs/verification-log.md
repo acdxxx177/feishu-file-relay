@@ -1,5 +1,33 @@
 # 验证日志
 
+## 移除代理来源 IP 白名单（2026-11-06）
+
+发布准备：用户随后授权提交代码、创建附注标签 `v1.2.1` 并推送。该标签会触发现有 CI 验证及通过后的 GHCR 发布；下列结果仍为本地验证证据，不代表远程构建或镜像发布已完成。本次不包含 VPS 部署。
+
+按用户批准方案修改本地 VPS 代码，对应 PRD F10/F11 及首次确认下载通知扩展。地理位置与访客限流均不再匹配代理来源 IP；保留 `TRUST_PROXY`、`TRUST_CLOUDFLARE_GEO`、内部地理标记和字段校验。旧 `TRUSTED_PROXY_IPS` 任意值都会被忽略，Compose、环境示例和生成器不再输出该项。Docker 子网/网关及 Nginx 配置保持不变。readiness 继续检查实际 socket，只允许回环访问。
+
+| 检查 | 结果 |
+| --- | --- |
+| `pnpm typecheck` | 通过；补充测试后再次执行 `pnpm exec tsc -p tsconfig.vps.json` 通过 |
+| `pnpm test` | 102/102 通过，零失败、零跳过 |
+| `pnpm check:health` | Hono CLI 返回 HTTP 200、`status: ok` |
+| `pnpm test:linux`（Windows） | 1 项因平台条件跳过；另在 WSL 运行同一测试通过 |
+| WSL Linux Nginx 集成测试 | 1/1 通过，零跳过 |
+| `pnpm test:docker` | 3 项均因 Docker CLI/引擎不可用跳过，不算验收通过 |
+
+新增或调整测试覆盖：不配置白名单、遗留错误值不影响配置加载、Docker IPv4/映射 IPv6/IPv6 来源变化后仍按访客头限流、关闭或省略开关时使用 socket、缺失/无效/多值 IP 的回退、其他转发头被忽略，以及伪造回环头无法访问 `/ready`。隔离下载确认经不同 Docker 来源地址，将中文地点写入唯一通知快照；重复确认不改写首次地点。地理单测继续验证两个开关、缺失或错误标记、原始 `CF-*` 不被采用、国家代码、Unicode 和异常字符校验。
+
+WSL 验证使用当前源码重新打包 `tests/vps/linux/proxy.test.ts` 为忽略目录 `.local/linux/proxy-trust.test.mjs`，采用 Node24 ESM bundle 和 `createRequire` banner。随后在 WSL Ubuntu 的仓库目录执行：
+
+```sh
+NGINX_TEST_BINARY="$PWD/.local/linux/nginx-root/usr/sbin/nginx" \
+  .local/linux/node-v24.22.2-linux-x64/bin/node --test .local/linux/proxy-trust.test.mjs
+```
+
+测试覆盖代理地理头覆盖、IPv4/IPv6 来源及 real-IP 重写、中文地点、100 MiB 下载 SHA-256、Range、撤回、取消和无响应临时文件；使用本地 mock、临时证书及专属端口，结束后清理测试进程。未另行重跑 500 MiB/1 GiB、大文件专项或旧 Worker 套件。
+
+新行为允许可直连 Node 的调用者提供访客 IP 和位置头，这是用户明确接受的取舍，详见[当前运行契约](../src/vps/context/runtime.md)与[Docker 部署说明](docker-deployment.md)。没有连接 VPS 执行变更，没有修改服务器文件、飞书权限或线上数据，没有发送真实消息。未发布镜像或部署，新代码需部署新版镜像才生效，已有通知位置不会补写。
+
 ## 首次确认下载通知（2026-11-06）
 
 按用户批准口径实现：仅启用后新登记文件参与；原生保存提交成功、或完整 Blob 后真实保存点击才确认；原始下载不通知。原下载统计不变。会话内存最多 1,000 条/24 小时，确认入库后用永久唯一任务与现有持久调度器投递。记录[操作与限制说明](first-download-notifications.md)。

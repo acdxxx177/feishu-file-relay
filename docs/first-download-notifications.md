@@ -31,11 +31,11 @@
 
 仓库 [Nginx 模板](../deploy/nginx.conf) 的 `geo`/`map` 必须位于 `http` 上下文，依赖 `ngx_http_realip_module`。模板使用 `$realip_remote_addr` 检查原始 TCP 对端，即使其他配置改写 `$remote_addr` 仍不能用访客地址伪装 Cloudflare 来源。内置网段来自 2026-11-06 的官方 [IPv4](https://www.cloudflare.com/ips-v4) / [IPv6](https://www.cloudflare.com/ips-v6) 列表，部署维护时应复核更新；不要改为信任所有来源。
 
-可信来源的三项地理值通过 `X-Relay-Geo-Country`、`X-Relay-Geo-Region`、`X-Relay-Geo-City` 转发，并写入 `X-Relay-Geo-Trusted: 1`。不可信来源的地理值清空、标记为 `0`。所有内部头都必须覆盖，不能透传用户同名头。应用还要求 `TRUST_PROXY=true`、socket 对端在现有可信代理列表及 `TRUST_CLOUDFLARE_GEO=true`，不直接相信请求上的 `CF-*` 值。
+可信来源的三项地理值通过 `X-Relay-Geo-Country`、`X-Relay-Geo-Region`、`X-Relay-Geo-City` 转发，并写入 `X-Relay-Geo-Trusted: 1`。不可信来源的地理值清空、标记为 `0`。所有内部头都必须覆盖，不能透传用户同名头。应用只要求 `TRUST_PROXY=true`、`TRUST_CLOUDFLARE_GEO=true` 和标记为 `1`，不再校验 socket 来源 IP，也不直接读取请求上的 `CF-*` 值。旧 `TRUSTED_PROXY_IPS` 配置会被忽略；能直接访问 Node 的调用者也可伪造内部标记和位置，这是本次明确接受的取舍。国家代码、UTF-8、长度及非法字符校验继续生效。
 
 检查实际拓扑而非仅复制配置：如果 Nginx 前面还有代理/NAT，需证明其保留真实来源；无法证明时保持地理开关关闭。Node 端口应继续只通过受控代理访问。先执行 `nginx -t`，再在授权窗口重载。保留无缓存、无缓冲、无临时响应文件、无压缩及断连传播配置，不开启敏感请求头或正文日志。
 
-对一个隔离请求分别验证：Cloudflare 路径产生真实地点；直连并伪造 `CF-*`、`X-Relay-Geo-*` 只能得到未知地点；IPv6 路径和 real-IP 重写不改变来源判断。核对非 ASCII 城市名没有乱码。位置仅表示网络出口，VPN、代理、移动网络可能影响准确性；应用不采集 IP、经纬度或邮编。
+对一个隔离请求分别验证：Cloudflare 路径产生真实地点；绕过 Cloudflare 直连 Nginx 并伪造 `CF-*`、`X-Relay-Geo-*` 只能得到未知地点；IPv6 路径和 real-IP 重写不改变 Nginx 来源判断。直连 Node 时，两个开关开启且内部标记为 `1` 即可提供位置，无代理 IP 限制。核对非 ASCII 城市名没有乱码。位置仅表示网络出口，VPN、代理、移动网络可能影响准确性；应用不采集 IP、经纬度或邮编。新版部署后只影响后续首次确认的位置，已有通知快照不会自动补写。
 
 ## 去重、失败与回滚
 

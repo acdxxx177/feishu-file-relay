@@ -1,6 +1,5 @@
 import type { Config } from './config'
 import type { DownloadLocation } from './download-sessions'
-import { trustedProxyCheck } from './trusted-proxy'
 
 function locationText(value: string | null): string | undefined {
   if (!value || value.length > 512) return
@@ -15,10 +14,10 @@ function locationText(value: string | null): string | undefined {
   return decoded
 }
 
-export function createLocationReader(config: Pick<Config, 'trustCloudflareGeo' | 'trustProxy' | 'trustedProxyIps'>) {
-  const trusted = trustedProxyCheck(config.trustedProxyIps)
-  return (request: Request, remote: string | undefined): DownloadLocation => {
-    if (!config.trustCloudflareGeo || !config.trustProxy || !remote || !trusted(remote) ||
+export function createLocationReader(config: Pick<Config, 'trustCloudflareGeo' | 'trustProxy'>) {
+  return (request: Request): DownloadLocation => {
+    // 地理头由部署入口覆盖；开关启用后仅检查标记，不再依赖容器来源 IP。
+    if (!config.trustCloudflareGeo || !config.trustProxy ||
         request.headers.get('X-Relay-Geo-Trusted') !== '1') return {}
     const rawCountry = request.headers.get('X-Relay-Geo-Country')
     const country = rawCountry && /^[A-Z]{2}$/.test(rawCountry) && !['XX', 'ZZ'].includes(rawCountry) &&

@@ -32,6 +32,8 @@ test('template covers runtime configuration and every Compose interpolation inpu
   const values = parseEnv(dockerEnvTemplate)
   const config = await readFile('src/vps/config.ts', 'utf8')
   const compose = await readFile('docker-compose.yml', 'utf8')
+  assert.equal(Object.hasOwn(values, 'TRUSTED_PROXY_IPS'), false)
+  assert.equal(compose.includes('TRUSTED_PROXY_IPS'), false)
   const keys = new Set([
     ...Array.from(config.matchAll(/env\.([A-Z][A-Z0-9_]+)/g), (match) => match[1]),
     ...Array.from(config.matchAll(/(?:required|integer|boolean|origin)\('([A-Z0-9_]+)'/g), (match) => match[1]),

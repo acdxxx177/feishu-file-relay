@@ -54,14 +54,15 @@ test('Compose preserves quoted secrets and process overrides without reading loc
     const config = JSON.parse(result.stdout)
     // config 为可再次加载的 Compose 文档，会将 $ 转义成 $$；凭据应检查实际容器环境。
     assert.equal(config.services.relay.environment.PORT, '3456')
-    assert.equal(config.services.relay.environment.TRUSTED_PROXY_IPS, '172.31.0.1')
+    assert.equal(config.services.relay.environment.TRUSTED_PROXY_IPS, undefined)
+    assert.equal(config.networks.relay.ipam.config[0].gateway, '172.31.0.1')
     assert.equal(config.services.relay.ports[0].host_ip, '127.0.0.1')
     assert.equal(Number(config.services.relay.ports[0].target), 3456)
     assert.equal(await readFile(path, 'utf8').then((value) => value.includes('fake$secret')), true)
     const override = join(directory, 'offline.yaml')
     // 只覆盖测试网络；保留原 Compose 的环境映射，不启动应用或连接真实 D1/飞书。
     await writeFile(override, 'services:\n  relay:\n    networks: !reset []\n    network_mode: none\n    ports: !reset []\nnetworks: !reset {}\n')
-    const probe = "const assert=require('node:assert/strict');assert.equal(process.env.FEISHU_APP_SECRET,'fake$secret# value');assert.equal(process.env.PORT,'3456');assert.equal(process.env.TRUSTED_PROXY_IPS,'172.31.0.1');assert.equal(process.env.CLOUDFLARE_D1_TOKEN,'')"
+    const probe = "const assert=require('node:assert/strict');assert.equal(process.env.FEISHU_APP_SECRET,'fake$secret# value');assert.equal(process.env.PORT,'3456');assert.equal(process.env.TRUSTED_PROXY_IPS,undefined);assert.equal(process.env.CLOUDFLARE_D1_TOKEN,'')"
     attempted = true
     await exec('docker', ['compose', '--project-name', name, '-f', resolve('docker-compose.yml'), '-f', override, '--env-file', path,
       'run', '--rm', '--no-deps', '--pull', 'never', '--name', name, '-T', 'relay', 'node', '-e', probe], { cwd: directory, env, windowsHide: true, timeout: 60000 })
@@ -87,7 +88,7 @@ test('image runs non-root without network, serves bundled assets, and exits clea
   } finally { if (created) await docker('rm', '--force', name) }
 })
 
-test('host bridge gateway keeps distinct client limits and cannot access readiness', { skip: skip || (process.platform !== 'linux' && 'Requires a local Linux Docker bridge') }, async () => {
+test('bridge requests keep distinct client limits without an IP allowlist and cannot access readiness', { skip: skip || (process.platform !== 'linux' && 'Requires a local Linux Docker bridge') }, async () => {
   const name = `relay-bridge-${randomUUID()}`
   const network = `${name}-net`
   let created = false
@@ -96,8 +97,7 @@ test('host bridge gateway keeps distinct client limits and cannot access readine
     // internal 网络允许宿主机验证桥接，但隔绝后台任务到真实 D1/飞书的外网访问。
     await docker('network', 'create', '--internal', network)
     networkCreated = true
-    const gateway = await docker('network', 'inspect', '--format', '{{(index .IPAM.Config 0).Gateway}}', network)
-    await runContainer(name, network, { TRUST_PROXY: 'true', TRUSTED_PROXY_IPS: gateway, DOWNLOAD_RATE_LIMIT: '1' })
+    await runContainer(name, network, { TRUST_PROXY: 'true', DOWNLOAD_RATE_LIMIT: '1' })
     created = true
     await healthy(name)
     // internal 网络不发布宿主机端口；Linux 宿主机可经网关直接访问容器 IP，仍保持外网隔离。

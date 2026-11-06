@@ -1,6 +1,6 @@
 # VPS 部署、迁移与回滚
 
-使用 Docker 时请按 [Docker 与 GHCR 部署](docker-deployment.md) 操作；仍须完成本文的生产切换与回滚清单。Docker 桥接模式通过明确的 `TRUSTED_PROXY_IPS` 信任宿主机代理，readiness 在容器内检查。
+使用 Docker 时请按 [Docker 与 GHCR 部署](docker-deployment.md) 操作；仍须完成本文的生产切换与回滚清单。`TRUST_PROXY=true` 时接受任意来源的合法单值 `X-Real-IP`，应用不再校验代理 IP，旧 `TRUSTED_PROXY_IPS` 配置会被忽略。地理位置仍要求两个信任开关及内部标记；readiness 始终在容器内按实际回环连接检查。
 
 ## 当前交付边界
 

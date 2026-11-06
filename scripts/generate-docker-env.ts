@@ -33,9 +33,8 @@ CHUNK_CACHE_ENABLED=false
 FIRST_DOWNLOAD_NOTIFICATION_ENABLED=false
 # 先验证代理的 Cloudflare 来源检查和内部地理头覆盖。
 TRUST_CLOUDFLARE_GEO=false
+# 开启后接受任意来源的 X-Real-IP；部署入口应覆盖该头。
 TRUST_PROXY=true
-# 留空时 Compose 使用 DOCKER_GATEWAY；只允许明确 IP，不接受 CIDR 或通配符。
-TRUSTED_PROXY_IPS=
 SHUTDOWN_TIMEOUT_MS=60000
 JOB_POLL_MS=15000
 

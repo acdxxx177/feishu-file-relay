@@ -84,6 +84,29 @@ test('only verified browser completion creates one durable event; raw, metadata,
   assert.ok(!String(job.argument).includes(token))
 })
 
+test('download completion retains location across Docker peer changes and ignores a stale proxy allowlist', async t => {
+  for (const remote of ['172.31.0.4', '::ffff:172.32.0.4', '2001:db8::4']) {
+    const h = await harness(64, 1, { TRUST_PROXY: 'true', TRUST_CLOUDFLARE_GEO: 'true', TRUSTED_PROXY_IPS: '172.29.0.4' })
+    t.after(() => h.close())
+    const token = await h.start()
+    await (await h.chunk(token)).arrayBuffer()
+    const result = await h.request(`/api/files/${id}/download-complete`, {
+      method: 'POST', body: JSON.stringify({ method: 'native' }),
+      headers: { Origin: origin, 'Content-Type': 'application/json', 'X-Download-Session': token,
+        'X-Relay-Geo-Trusted': '1', 'X-Relay-Geo-Country': 'CN',
+        'X-Relay-Geo-Region': Buffer.from('浙江', 'utf8').toString('latin1'),
+        'X-Relay-Geo-City': Buffer.from('宁波', 'utf8').toString('latin1') },
+    }, remote)
+    assert.equal(result.status, 204)
+    assert.equal(h.jobs().length, 1)
+    const original = String(h.jobs()[0].argument)
+    assert.deepEqual(JSON.parse(original).snapshot.location, { country: 'CN', region: '浙江', city: '宁波' })
+    // 重复确认不会用缺失或变化的地理头改写首次快照。
+    assert.equal((await h.complete(token)).status, 204)
+    assert.equal(h.jobs()[0].argument, original)
+  }
+})
+
 test('missing, out-of-order and separate-session chunks cannot combine; retried full coverage can complete', async t => {
   const h = await harness(CHUNK_SIZE + 64); t.after(() => h.close())
   const a = await h.start(), b = await h.start()
